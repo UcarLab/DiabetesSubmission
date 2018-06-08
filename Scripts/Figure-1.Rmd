@@ -1,0 +1,171 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+Set Working Directory
+```{r setup}
+WorkingDirectory <- "/Users/skn/Dropbox/Diabetes_FinalSubmission_RemoveBatchEffectArtifacts/Z.Scripts/Files/"
+```
+
+
+Insert Size Distribution (Supplementary Figure 1A)
+```{r}
+setwd(WorkingDirectory)
+Islets_FileNames <- read.table("./InsertSizeMetrics/Islets_FileNames.txt", header=FALSE)
+for(i in 1:nrow(Islets_FileNames))
+{
+  Islet <- read.table(paste(WorkingDirectory, "InsertSizeMetrics/", as.character(Islets_FileNames[i,2]), sep=""), skip=10, header=TRUE)
+  Islet$All_Reads.fr_count <- Islet$All_Reads.fr_count/sum(Islet$All_Reads.fr_count)
+  plot(x=Islet$insert_size, y=Islet$All_Reads.fr_count, type="h", main=Islets_FileNames[i,1], xlab="Insert Size", ylab="Frequency")
+}
+```
+
+
+Individual-Specific VS Common Peaks
+```{r}
+setwd(WorkingDirectory)
+library(ggplot2); library(org.Hs.eg.db); library(pheatmap); library(sva); library(GenomicRanges); library(ChIPpeakAnno);  library(gage); library(rtracklayer)
+ConsensusPeaks <- read.table("./DiffBind_19Islets_ConsensusPeaks.txt", header=TRUE) # Reading DiffBind Consensus Peaks
+ConsensusPeaks_GR <- GRanges(seqnames=ConsensusPeaks$seqnames,ranges=IRanges(start=ConsensusPeaks$start,end=ConsensusPeaks$end),strand=NULL,seq_info=ConsensusPeaks[,c(6:ncol(ConsensusPeaks))]) # Create GRanges object for the consensus peaks
+#####################################################################################################################################################
+# Histogram of Sample Frrequency in ATAC-seq Peaks (Supplementary Figure 1B)
+count=table(ConsensusPeaks$Called1+ConsensusPeaks$Called2)
+barplot(count,border="blue", col="red", xlab="Number of Islet Samples",ylab="Frequency of ATAC-seq Peaks",main="19 Islets")
+#####################################################################################################################################################
+# ChromHMM States Annotation of Consensus peaks segregated by Sample Frequency (Supplementary Figure 1C)
+ConsensusPeaks$NumIslets <- ConsensusPeaks$Called1+ConsensusPeaks$Called2
+Islet_ChromHMM <- read.table("./ReferenceFiles/SteveParker/ChromHMM/Islets.chromatinStates.bed", header=FALSE)
+ConsensusPeaks$ChromHMM <- "18_Quiescent/low_signal"
+ConsensusPeaks$ChromHMM_Numbered <- 1
+ChromHMM_States <- c("18_Quiescent/low_signal", "17_Weak_repressed_polycomb", "16_Repressed_polycomb", "6_Weak_transcription", "5_Strong_transcription", "11_Weak_enhancer", "8_Genic_enhancer", "10_Active_enhancer_2", "9_Active_enhancer_1", "14_Bivalent/poised_TSS", "3_Flanking_TSS", "2_Weak_TSS", "1_Active_TSS")
+count <- 0
+for(i in ChromHMM_States)
+{
+  count <- count+1
+  Islet_ChromHMM_Subset <- Islet_ChromHMM[which(Islet_ChromHMM$V4 %in% i),]
+  Islet_ChromHMM_Subset_GR <- GRanges(seqnames=Islet_ChromHMM_Subset$V1,ranges=IRanges(start=Islet_ChromHMM_Subset$V2,end=Islet_ChromHMM_Subset$V3), strand=NULL)
+  Overlaps <- findOverlaps(ConsensusPeaks_GR, Islet_ChromHMM_Subset_GR, select="first")
+  Overlaps_df <- cbind(1:length(Overlaps), Overlaps)
+  Overlaps_df <- Overlaps_df[complete.cases(Overlaps_df),]
+  ConsensusPeaks$ChromHMM[Overlaps_df[,1]] <- i
+  ConsensusPeaks$ChromHMM_Numbered[Overlaps_df[,1]] <- length(ChromHMM_States)-count+1
+}
+ChromHMM_Distribution <- as.data.frame(table(ConsensusPeaks$NumIslets, ConsensusPeaks$ChromHMM_Numbered))
+ChromHMM_Distribution <- ChromHMM_Distribution[order(ChromHMM_Distribution[,1], decreasing=FALSE),]
+colnames(ChromHMM_Distribution) <- c("NumIslets", "ChromHHM_Numbered", "Freq")
+ChromHMM_Distribution$Fraction <- 0
+for(i in 1:length(unique(ChromHMM_Distribution$NumIslets)))
+{
+  ChromHMM_Distribution$Fraction[which(ChromHMM_Distribution$NumIslets == i)] <- ChromHMM_Distribution$Freq[which(ChromHMM_Distribution$NumIslets == i)]/sum(ChromHMM_Distribution$Freq[which(ChromHMM_Distribution$NumIslets == i)])
+}
+count <- 0
+ChromHMM_Distribution$ChromHHM_States <- "18_Quiescent/low_signal"
+for(i in ChromHMM_States)
+{
+  count <- count+1
+  ChromHMM_Distribution$ChromHHM_States[which(ChromHMM_Distribution$ChromHHM_Numbered == length(ChromHMM_States)-count+1)] <- i
+}
+# ggplot
+ChromHMM_Distribution$order <- length(ChromHMM_States) - as.numeric(ChromHMM_Distribution$ChromHHM_Numbered) + 1
+g <- ggplot(ChromHMM_Distribution, aes(x=NumIslets, y=Fraction,fill=reorder(ChromHHM_States,order))) + geom_bar(position="fill", stat="identity") + scale_fill_manual(values=c("1_Active_TSS"="#FF0000","14_Bivalent/poised_TSS"="#CF0BC6","2_Weak_TSS"="#FF6969","9_Active_enhancer_1"="#FACA00","10_Active_enhancer_2"="#FACA00", "11_Weak_enhancer"="#FFFC04", "8_Genic_enhancer"="#FFFC04", "3_Flanking_TSS"="#FF4500", "5_Strong_transcription"="#00B050", "6_Weak_transcription"="#00B050", "16_Repressed_polycomb"="#7F7F7F", "17_Weak_repressed_polycomb"="#7F7F7F", "18_Quiescent/low_signal"="#FFFFFF")) + theme(axis.text.x=element_text(angle=90, hjust=1))
+print(g)
+#####################################################################################################################################################
+```
+
+
+
+
+
+Overlap of Consensus Peaks (19 Islets) with Stretch Enhancers (Figure S1D) and ChromHMM States (Figure S1C)
+```{r}
+setwd(WorkingDirectory)
+library(GenomicRanges); library(ChIPpeakAnno); library(ggplot2)
+# Annotating Peaks to StretchEnhancers (Figure 1C)
+Islets <- read.table("./Islets19_ConsensusPeaks.bed", header=FALSE) # Reading the Peak Bed File
+ColumnNames <- c("chromosome", "start", "end")
+colnames(Islets) <- ColumnNames
+Islets_StretchEnhancers <- Islets
+Islets_GR <- GRanges(seqnames=Islets$chromosome, ranges=IRanges(start=Islets$start,end=Islets$end)) # Converting to GRanges
+Tissues <- read.table("./ReferenceFiles/SteveParker/TissuesStretchEnhancers.txt")
+SEs_Overlap_NonOverlap <- data.frame()
+SEs_Overlap_NonOverlap_ROWNAMES <- vector()
+for(i in 1:length(Tissues$V1))
+{
+  readFile <- paste("./ReferenceFiles/SteveParker/StretchEnhancers/Z.Unique_StretchEnhancers/", Tissues$V1[i], sep="")
+  Tissue_StretchEnhancers <- read.table(readFile, header=FALSE)
+  Tissue_StretchEnhancers_GR <- GRanges(seqnames=Tissue_StretchEnhancers$V1, ranges=IRanges(start=Tissue_StretchEnhancers$V2, end=Tissue_StretchEnhancers$V3))
+  Overlaps <- findOverlaps(Islets_GR, Tissue_StretchEnhancers_GR, select="first")
+  Islets_StretchEnhancers[,ncol(Islets_StretchEnhancers)+1] <- (!is.na(Overlaps))*1
+  ColumnNames <- c(ColumnNames, gsub("\\..*","",Tissues$V1[i]))
+  colnames(Islets_StretchEnhancers) <- ColumnNames
+  
+  Overlaps <- findOverlaps(Tissue_StretchEnhancers_GR, Islets_GR, select="first")
+  Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)+1] <- (!is.na(Overlaps))*1
+  SEs_Overlap_NonOverlap[i,1] <- sum(Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)])
+  SEs_Overlap_NonOverlap[i,2] <- nrow(Tissue_StretchEnhancers) - sum(Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)])
+  SEs_Overlap_NonOverlap_ROWNAMES[i] <-  gsub("\\..*","",Tissues$V1[i])
+}
+Islets_StretchEnhancers <- Islets_StretchEnhancers[, gsub("\\..*","",Tissues$V1)]
+Number_Islets_StretchEnhancers <- colSums(Islets_StretchEnhancers)
+rownames(SEs_Overlap_NonOverlap) <- SEs_Overlap_NonOverlap_ROWNAMES
+colnames(SEs_Overlap_NonOverlap) <- c("Overlap", "NonOverlap")
+SEs_Overlap_NonOverlap$Ratio <- SEs_Overlap_NonOverlap$Overlap/(SEs_Overlap_NonOverlap$Overlap+SEs_Overlap_NonOverlap$NonOverlap)
+SEs_Overlap_NonOverlap <- SEs_Overlap_NonOverlap[order(SEs_Overlap_NonOverlap$Ratio, decreasing=TRUE),]
+par(mai=c(2,1,1,1))
+barplot(SEs_Overlap_NonOverlap$Ratio, las=2, ylab="Fraction Tissue SEs overlapping Islet Consensus Peaks", main="Stretch Enhancers", col="black", names.arg=rownames(SEs_Overlap_NonOverlap), ylim=c(0,1.0))
+
+# Annotating Peaks to ChromHMM States (Figure 1D)
+Islets <- read.table("./Islets19_ConsensusPeaks.bed", header=FALSE) # Reading the Peak Bed File
+ColumnNames <- c("chromosome", "start", "end")
+colnames(Islets) <- ColumnNames
+Islets_ChromHMM <- Islets
+Islets_GR <- GRanges(seqnames=Islets$chromosome, ranges=IRanges(start=Islets$start,end=Islets$end)) # Converting to GRanges
+Tissues <- read.table("./ReferenceFiles/SteveParker/TissuesChromHMMstates.txt")
+for(i in 1:length(Tissues$V1))
+{
+  readFile <- paste("./ReferenceFiles/SteveParker/ChromHMM/", Tissues$V1[i], sep="")
+  Tissue_ChromHMM_State <- read.table(readFile, header=FALSE)
+  Tissue_ChromHMM_State_GR <- GRanges(seqnames=Tissue_ChromHMM_State$V1, ranges=IRanges(start=Tissue_ChromHMM_State$V2, end=Tissue_ChromHMM_State$V3))
+  Overlaps <- findOverlaps(Islets_GR, Tissue_ChromHMM_State_GR, select="first")
+  Islets_ChromHMM[,ncol(Islets_ChromHMM)+1] <- Tissue_ChromHMM_State$V4[Overlaps]
+  ColumnNames <- c(ColumnNames, gsub("\\..*","",Tissues$V1[i]))
+  colnames(Islets_ChromHMM) <- ColumnNames
+}
+Islets_ChromHMM <- Islets_ChromHMM[, gsub("\\..*","",Tissues$V1)]
+Islets_ChromHMM_counts <- data.frame()
+ChromHMM_States <- c("1_Active_TSS", "14_Bivalent/poised_TSS", "2_Weak_TSS", "3_Flanking_TSS",  "9_Active_enhancer_1", "10_Active_enhancer_2", "11_Weak_enhancer", "8_Genic_enhancer",  "5_Strong_transcription", "6_Weak_transcription", "16_Repressed_polycomb", "17_Weak_repressed_polycomb", "18_Quiescent/low_signal")
+for(j in 1:ncol(Islets_ChromHMM))
+{
+  for(k in 1:length(ChromHMM_States))
+  {
+    Islets_ChromHMM_counts[k,j] <- sum((Islets_ChromHMM[,j] %in% ChromHMM_States[k])*1)
+  }
+}
+rownames(Islets_ChromHMM_counts) <- ChromHMM_States
+colnames(Islets_ChromHMM_counts) <- colnames(Islets_ChromHMM)
+Islets_ChromHMM_counts <- Islets_ChromHMM_counts/colSums(Islets_ChromHMM_counts)
+temp <- matrix(nrow=nrow(Islets_ChromHMM_counts), ncol=ncol(Islets_ChromHMM_counts))
+# Formatting data for ggplot
+Fractions <- NULL
+for(j in 1:ncol(Islets_ChromHMM_counts)) { Fractions <- c(Fractions, Islets_ChromHMM_counts[,j]) }
+Categories <- rep(colnames(Islets_ChromHMM_counts), each=length(ChromHMM_States))
+ChromHMM_States_Rep <- rep(ChromHMM_States, times=length(Tissues$V1))
+prop <- data.frame(Categories, Fractions, ChromHMM_States_Rep, order=rep(length(ChromHMM_States):1,times=length(Tissues$V1)))
+# Reordering data Frame
+temp <- prop[which(as.character(prop[,3]) %in% as.character("18_Quiescent/low_signal")),]
+temp <- temp[order(temp[,2], decreasing=FALSE),1]
+StartingIndices <- match(temp, prop[,1])
+FullIndices <- vector()
+for(i in 1:length(StartingIndices)) { FullIndices <- c(FullIndices, StartingIndices[i]:(StartingIndices[i]+12)) }
+prop <- prop[FullIndices,]
+prop <- rbind(prop[which(prop$Categories %in% "Islets"),], prop[which(!(prop$Categories %in% "Islets")),])
+# ggplot
+prop$Categories <- factor(prop$Categories, levels=unique(prop$Categories))
+g <- ggplot(prop, aes(x=Categories, y=Fractions,fill=reorder(ChromHMM_States_Rep,order))) + geom_bar(position="fill", stat="identity") + scale_fill_manual(values=c("1_Active_TSS"="#FF0000","14_Bivalent/poised_TSS"="#CF0BC6","2_Weak_TSS"="#FF6969","9_Active_enhancer_1"="#FACA00","10_Active_enhancer_2"="#FACA00", "11_Weak_enhancer"="#FFFC04", "8_Genic_enhancer"="#FFFC04", "3_Flanking_TSS"="#FF4500", "5_Strong_transcription"="#00B050", "6_Weak_transcription"="#00B050", "16_Repressed_polycomb"="#7F7F7F", "17_Weak_repressed_polycomb"="#7F7F7F", "18_Quiescent/low_signal"="#FFFFFF")) + theme(axis.text.x=element_text(angle=90, hjust=1))
+print(g)
+```
+
+
+
+
+

@@ -1,0 +1,649 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup}
+knitr::opts_knit$set(root.dir = '/Users/skn/Dropbox/Diabetes_FinalSubmission_RemoveBatchEffectArtifacts/Z.Scripts/Files/')
+```
+
+
+
+```{r}
+library(edgeR); library(ggplot2); library(org.Hs.eg.db); library(pheatmap); library(sva); library(ChIPpeakAnno);  library(rtracklayer)
+CutOff_Value<-0.10; MinimumReadCount<-30; PRIOR.COUNT<-1; NumSamplesAboveMinReadCount<-2 # Important Global Variables
+source("../PVCA.R") # PVCA Function
+explained.variance <- function(v,X) {as.numeric(var(as.matrix(X) %*% (v/norm(as.matrix(v),"f")))/sum(apply(as.matrix(X),2,var)))} # Explained Variance
+# Here, v is the vector (say, SV1) and X is the data matrix (after removing all columns containing anything other than actual reads)
+#################################################################################################################################################################
+MetaData<-read.csv("./DifferentialPeaksAnalysis/Meta-Data_Table_AgeSexRaceMatched.csv",header=TRUE) # Reading Meta-Data Table
+# Categorizing Meta-Variables and converting to factors
+MetaData_Binarized<-MetaData
+MetaData_Binarized$Condition<-as.factor((MetaData$Condition=="Diabetic")*2+(MetaData$Condition=="Non-Diabetic")*1)
+MetaData_Binarized$Sex<-as.factor((MetaData$Sex=="M")*2+(MetaData$Sex=="F")*1)
+MetaData_Binarized$Race<-as.factor((MetaData$Race=="W")*2+(MetaData$Race=="H")*1)
+MetaData_Binarized$Age<-as.factor((MetaData$Age>=60)*2+(MetaData$Age<=30)*1)
+MetaData_Binarized$BMI<-as.factor((MetaData$BMI>=18.5 & MetaData$BMI<24.9)*1+(MetaData$BMI>=24.9 & MetaData$BMI<29.9)*2+(MetaData$BMI>29.9)*3)
+MetaData_Binarized$Medicine<-as.factor((MetaData$Medicine=="Yes")*2+(MetaData$Medicine=="No")*1)
+MetaData_Binarized$LibraryPreppedBy<-as.factor((MetaData$LibraryPreppedBy=="Romy")*2+(MetaData$LibraryPreppedBy=="MLS")*1)
+MetaData_Binarized$Date.Sequenced<-as.factor(MetaData$Date.Sequenced)
+MetaData_Binarized$FilteredMappedReads<-(MetaData_Binarized$Total.Mapped-MetaData_Binarized$ChrM-MetaData_Binarized$ChrX-MetaData_Binarized$ChrY)
+# Reading in the Consensus Peaks Output from DiffBind (Raw Read Counts)
+ConsensusPeaks<-read.table("./DifferentialPeaksAnalysis/DiffBind_Diabetic-Non-Diabetic_AgeSexRaceMatched_ConsensusPeaks.txt", header=TRUE)
+ConsensusPeaks<-ConsensusPeaks[which((ConsensusPeaks$Called1+ConsensusPeaks$Called2)>2),] # Filtering Peaks with one T2D Peak and two ND Peak (and vice-versa)
+ConsensusPeaks<-ConsensusPeaks[which(!(ConsensusPeaks$Called1==2 & ConsensusPeaks$Called2==1) & !(ConsensusPeaks$Called1==1 & ConsensusPeaks$Called2==2)),] # Filtering Peaks with one T2D Peak and two ND Peak (and vice-versa)
+ConsensusPeaks$PeakNames<-paste("ConsensusPeak_",1:nrow(ConsensusPeaks),sep="") # Naming all the consensus peaks
+Counts_ConsensusPeaks<-ConsensusPeaks[,c(1,2,3,ncol(ConsensusPeaks),14:(14+length(MetaData_Binarized$Sample)-1))] # Cleaning the Data Frame
+Counts_ConsensusPeaks<-Counts_ConsensusPeaks[which(rowSums((Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)]>MinimumReadCount)*1)>NumSamplesAboveMinReadCount),] # Filtering by Minimum Read Counts
+rownames(Counts_ConsensusPeaks) <- Counts_ConsensusPeaks$PeakNames
+# Correlation Plots
+y <- DGEList(counts=Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)], genes=Counts_ConsensusPeaks[,1:4], group=MetaData_Binarized$Condition)
+y <- calcNormFactors(y, method="TMM")
+data <- cpm(y$counts, log=T, prior.count=PRIOR.COUNT, lib.size=y$samples$lib.size)
+CorrelationMatrix_pearson <- matrix(nrow=ncol(data),ncol=ncol(data))
+CorrelationMatrix_spearman <- matrix(nrow=ncol(data),ncol=ncol(data))
+for(i in 1:ncol(data)){
+  for(j in 1:ncol(data)){
+    CorrelationMatrix_pearson[i,j]<-cor(data[,i],data[,j],method="pearson")
+    CorrelationMatrix_spearman[i,j]<-cor(data[,i],data[,j],method="spearman")}}
+SampleNames<-MetaData$Sample
+colnames(CorrelationMatrix_pearson)<-as.vector(MetaData$Sample); colnames(CorrelationMatrix_spearman)<-as.vector(MetaData$Sample)
+rownames(CorrelationMatrix_pearson)<-as.vector(MetaData$Sample); rownames(CorrelationMatrix_spearman)<-as.vector(MetaData$Sample)
+pheatmap(CorrelationMatrix_pearson,cluster_rows=TRUE,cluster_cols=TRUE,
+         show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,main="R (pearson)")
+pheatmap(CorrelationMatrix_spearman,cluster_rows=TRUE,cluster_cols=TRUE,
+         show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,main="R (spearman)")
+# PCA 
+y_pca_all <- prcomp(data, center=TRUE, scale.=TRUE)
+PCA_Matrix <- data.frame(y_pca_all$rotation)
+# Plotting PCA
+qplot(x=PC1, y=PC2,data=data.frame(y_pca_all$rotation), color=MetaData$Condition) + labs(x=paste("PC1 [",summary(y_pca_all)$importance[2,1]*100,"% Variance Explained]"), y=paste("PC2 [",summary(y_pca_all)$importance[2,2]*100,"% Variance Explained]"), title="PCA of Consensus Peaks")
+
+p0 <- ggplot(data=data.frame(y_pca_all$rotation), aes(x=PC1,y=PC2,label=MetaData$Sample,color=MetaData$Condition))
+p0 + labs(x=paste("PC1 [",summary(y_pca_all)$importance[2,1]*100,"% Variance Explained]"),
+    y=paste("PC2 [",summary(y_pca_all)$importance[2,2]*100,"% Variance Explained]"), title="PCA of Consensus Peaks") + geom_text(check_overlap=FALSE, size=5)
+rm(data)
+
+```
+
+
+
+
+
+EdgeR Analysis
+```{r}
+# SVA
+y <- DGEList(counts=Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)], genes=Counts_ConsensusPeaks[,1:4], group=MetaData_Binarized$Condition)
+y <- calcNormFactors(y, method="TMM")
+main.design <- model.matrix(~factor(Condition) + factor(Race) + factor(Sex), data=MetaData_Binarized)
+null.design <- model.matrix(~1, data=MetaData_Binarized)
+dat <- y$counts %*% diag(as.vector(calcNormFactors(y$counts)))
+NumSurrVar <- num.sv(dat, main.design)
+Control.Prob <- empirical.controls(dat,main.design, null.design,n.sv=NumSurrVar,B=25,type="counts")
+svobj.group <- svaseq(dat, main.design, null.design,n.sv=NumSurrVar,B=25,constant=PRIOR.COUNT,control=Control.Prob)
+CorrelationMatrix_pearson <- matrix(nrow=nrow(PCA_Matrix),ncol=ncol(svobj.group$sv))
+for(i in 1:nrow(PCA_Matrix))
+{ for(j in 1:ncol(svobj.group$sv)){
+    CorrelationMatrix_pearson[i,j]<-cor(PCA_Matrix[,i],svobj.group$sv[,j],method="pearson")}}
+rownames(CorrelationMatrix_pearson)<-paste("PC",1:nrow(PCA_Matrix),sep="")
+colnames(CorrelationMatrix_pearson)<-paste("SV",1:ncol(svobj.group$sv),sep="")
+pheatmap(CorrelationMatrix_pearson,cluster_rows=FALSE,cluster_cols=FALSE,show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,
+         main="R (pearson)")
+NumberMetaVariables<-11
+CorrelationHeatmap<-matrix(nrow=NumberMetaVariables,ncol=ncol(svobj.group$sv))
+for(i in 1:ncol(svobj.group$sv))
+{
+  CorrelationHeatmap[1,i]<-cor(as.numeric(MetaData_Binarized$Condition), svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[2,i]<-cor(as.numeric(MetaData_Binarized$Sex), svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[3,i]<-cor(as.numeric(MetaData_Binarized$Race), svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[4,i]<-cor(MetaData$Age, svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[5,i]<-cor(MetaData$BMI, svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[6,i]<-cor(as.numeric(MetaData_Binarized$Medicine), svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[7,i]<-cor(as.numeric(MetaData_Binarized$LibraryPreppedBy), svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[8,i]<-cor(MetaData_Binarized$FilteredMappedReads, svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[9,i]<-cor(MetaData_Binarized$ReadsInPeaks,svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[10,i]<-cor(as.numeric(MetaData_Binarized$Date.Sequenced),svobj.group$sv[,i],method="pearson")
+  CorrelationHeatmap[11,i]<-cor(as.numeric(MetaData_Binarized$FriP),svobj.group$sv[,i],method="pearson")
+}
+rownames(CorrelationHeatmap)<-c("Condition","Sex","Race","Age","BMI","Medicine","LibraryPrepped","FilteredMappedReads","ReadsConsensusPeaks","DateSequenced","FriP")
+colnames(CorrelationHeatmap)<-paste("SV",1:ncol(svobj.group$sv),sep="")
+pheatmap(CorrelationHeatmap,cluster_rows=FALSE,cluster_cols=FALSE,show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE, main="R (pearson)")
+
+# EdgeR
+y <- DGEList(counts=Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)], genes=Counts_ConsensusPeaks[,1:4], group=MetaData_Binarized$Condition)
+y <- calcNormFactors(y,method="TMM")
+sva.design <- model.matrix(~svobj.group$sv+MetaData_Binarized$Race+MetaData_Binarized$Sex)
+rownames(sva.design) <- colnames(y)
+y.sva <- estimateDisp(y, sva.design, robust=TRUE)
+# Actual Matrices
+y <- DGEList(counts=Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)], genes=Counts_ConsensusPeaks[,1:4], group=MetaData_Binarized$Condition)
+y <- calcNormFactors(y,method="TMM")
+design <- model.matrix(~svobj.group$sv+MetaData_Binarized$Race+MetaData_Binarized$Sex+MetaData_Binarized$Condition) 
+rownames(design) <- colnames(y)
+y <- estimateDisp(y, design, robust=TRUE)
+test.method="glm" # ql | glm # Edit this to change estimation method
+if (test.method=="glm") {
+  atac.glm <- glmFit(y, design)
+  atac.glmfit <- glmLRT(atac.glm)
+  sva.atac.glm <- glmFit(y.sva, sva.design)
+  sva.atac.glmfit <- glmLRT(sva.atac.glm)
+}
+if (test.method=="ql") {
+  atac.glm <- glmQLFit(y, design, robust=TRUE)
+  atac.glmfit <- glmQLFTest(atac.glm)
+  sva.atac.glm <- glmQLFit(y.sva, sva.design, robust=TRUE)
+  sva.atac.glmfit <- glmQLFTest(sva.atac.glm)
+}
+# Plotting p-values
+hist(atac.glmfit$table$PValue,breaks=200,xlab="p-values",main="Histogram of p-values (WithSVA)")
+# Adjusting p-values
+atac.glmfit$table$AdjustedPValue=p.adjust(atac.glmfit$table$PValue, method="BH")
+# Comparing p-values of Opening VS Closing peaks
+boxplot(-log10(atac.glmfit$table$PValue[which(atac.glmfit$table$AdjustedPValue<CutOff_Value & atac.glmfit$table$logFC>0)]), 
+        -log10(atac.glmfit$table$PValue[which(atac.glmfit$table$AdjustedPValue<CutOff_Value & atac.glmfit$table$logFC<0)]),
+        notch=TRUE, names=c("Opening", "Closing"), outline=FALSE)
+# Subtracting Noise from CPM matrix
+NoiseSubtractedCPM<-cpm(y$counts %*% diag(as.vector(calcNormFactors(y$counts))),log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size)-cpm(sva.atac.glmfit$fitted.values,log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size)
+NoiseSubtractedCPM<-NoiseSubtractedCPM[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+colnames(NoiseSubtractedCPM)<-MetaData_Binarized$Sample
+# Re-ordering rows
+atac.glmfit$genes<-atac.glmfit$genes[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+OrderedCPMvalues<-cpm(y$counts %*% diag(as.vector(calcNormFactors(y$counts))),log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size)[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+colnames(OrderedCPMvalues)<-MetaData_Binarized$Sample
+atac.glmfit$table<-atac.glmfit$table[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+NumSignificantPeaks<-sum((atac.glmfit$table$AdjustedPValue<CutOff_Value)*1)
+WithSVA_Table<-atac.glmfit$table
+WithSVA_genes<-atac.glmfit$genes
+# MA Plot of Differential Peaks
+qplot(x=logCPM,y=logFC,data=atac.glmfit$table,color=AdjustedPValue>CutOff_Value, main="MA Plot of Differential Peaks (WithSVA)")
+# Heatmap (Figure 4B)
+pheatmap(OrderedCPMvalues[which(atac.glmfit$table$AdjustedPValue<CutOff_Value),], scale="row", show_rownames=FALSE,main="Heatmap of Differential Peaks (WithSVA)",clustering_distance_cols="correlation")
+# PVCA (Supplementary Figure 3B)
+pvca.res.no<-PVCA(OrderedCPMvalues,MetaData_Binarized[,c("Condition","Sex","Race","LibraryPreppedBy","Date.Sequenced")],0.8,FALSE)
+PlotPVCA(pvca.res.no,"PVCA (Without Subtraction; No BMI)")
+pvca.res.no<-PVCA(NoiseSubtractedCPM,MetaData_Binarized[,c("Condition","Sex","Race","LibraryPreppedBy","Date.Sequenced")],0.8,FALSE)
+PlotPVCA(pvca.res.no,"PVCA (After Subtraction; No BMI)")
+```
+
+
+
+
+Comparing Differential Peaks (With and Without SVA)
+```{r}
+library(ChIPpeakAnno)
+#Without SVA
+y <- DGEList(counts=Counts_ConsensusPeaks[,5:ncol(Counts_ConsensusPeaks)], genes=Counts_ConsensusPeaks[,1:4], group=MetaData_Binarized$Condition)
+y <- calcNormFactors(y,method="TMM")
+design <- model.matrix(~MetaData_Binarized$Condition)
+rownames(design) <- colnames(y)
+y <- estimateDisp(y, design, robust=TRUE)
+test.method="glm" # ql | glm # Edit this to change estimation method
+if (test.method=="glm") {
+  atac.glm <- glmFit(y, design)
+  atac.glmfit <- glmLRT(atac.glm)
+}
+if (test.method=="ql") {
+  atac.glm <- glmQLFit(y, design, robust=TRUE)
+  atac.glmfit <- glmQLFTest(atac.glm)
+}
+# Adjusting p-values
+atac.glmfit$table$AdjustedPValue=p.adjust(atac.glmfit$table$PValue, method="BH")
+# Re-ordering rows
+atac.glmfit$genes<-atac.glmfit$genes[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+OrderedCPMvalues<-cpm(y$counts %*% diag(as.vector(calcNormFactors(y$counts))), log=T, prior.count=PRIOR.COUNT, lib.size=y$samples$lib.size)[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+atac.glmfit$table<-atac.glmfit$table[order(atac.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+WithoutSVA_Table <- atac.glmfit$table
+WithoutSVA_genes <- atac.glmfit$genes
+
+# Plotting Overlap between Differential Peaks (WithSVA and WithoutSVA) (Supplementary Figure 3C)
+WithoutSVA_genes_Differential<-WithoutSVA_genes[which(WithoutSVA_Table$AdjustedPValue<CutOff_Value),]
+WithoutSVA_genes_Differential_GR<-GRanges(seqnames=WithoutSVA_genes_Differential$seqnames,
+                                          ranges=IRanges(start=WithoutSVA_genes_Differential$start,end=WithoutSVA_genes_Differential$end))
+WithSVA_genes_Differential<-WithSVA_genes[which(WithSVA_Table$AdjustedPValue<CutOff_Value),]
+WithSVA_genes_Differential_GR<-GRanges(seqnames=WithSVA_genes_Differential$seqnames,
+                                       ranges=IRanges(start=WithSVA_genes_Differential$start,end=WithSVA_genes_Differential$end))
+makeVennDiagram(Peaks=list(WithoutSVA_genes_Differential_GR,WithSVA_genes_Differential_GR),NameOfPeaks=c("WithoutSVA","WithSVA"))
+```
+
+
+ChromHMM 
+```{r}
+Islet_ChromHMM <- read.table("./ReferenceFiles/SteveParker/ChromHMM/Islets.chromatinStates.bed", header=FALSE)
+ChromHMM_States <- c("1_Active_TSS", "14_Bivalent/poised_TSS", "2_Weak_TSS", "3_Flanking_TSS", "9_Active_enhancer_1", "10_Active_enhancer_2", "11_Weak_enhancer", "8_Genic_enhancer",  "5_Strong_transcription", "6_Weak_transcription", "16_Repressed_polycomb", "17_Weak_repressed_polycomb", "18_Quiescent/low_signal")
+WithoutSVA_genes <- WithSVA_genes
+WithoutSVA_genes_GR <- GRanges(seqnames=WithoutSVA_genes$seqnames,ranges=IRanges(start=WithoutSVA_genes$start,end=WithoutSVA_genes$end))
+WithoutSVA_genes_Differential <- WithSVA_genes[which(WithSVA_Table$AdjustedPValue<CutOff_Value),]
+WithoutSVA_genes_Differential_GR <- GRanges(seqnames=WithoutSVA_genes_Differential$seqnames,ranges=IRanges(start=WithoutSVA_genes_Differential$start,end=WithoutSVA_genes_Differential$end))
+WithoutSVA_genes_Differential_PosFC <- WithSVA_genes[which(WithSVA_Table$AdjustedPValue<CutOff_Value & WithSVA_Table$logFC>0),]
+WithoutSVA_genes_Differential_PosFC_GR <- GRanges(seqnames=WithoutSVA_genes_Differential_PosFC$seqnames,ranges=IRanges(start=WithoutSVA_genes_Differential_PosFC$start,end=WithoutSVA_genes_Differential_PosFC$end))
+WithoutSVA_genes_Differential_NegFC <- WithSVA_genes[which(WithSVA_Table$AdjustedPValue<CutOff_Value & WithSVA_Table$logFC<0),]
+WithoutSVA_genes_Differential_NegFC_GR <- GRanges(seqnames=WithoutSVA_genes_Differential_NegFC$seqnames,ranges=IRanges(start=WithoutSVA_genes_Differential_NegFC$start,end=WithoutSVA_genes_Differential_NegFC$end))
+WithoutSVA_genes$IsletChromHMM <- "NA"
+WithoutSVA_genes_Differential$IsletChromHMM <- "NA"
+WithoutSVA_genes_Differential_PosFC$IsletChromHMM <- "NA"
+WithoutSVA_genes_Differential_NegFC$IsletChromHMM <- "NA"
+WithoutSVA_genes$IsletChromHMM_Numbered <- 0
+WithoutSVA_genes_Differential$IsletChromHMM_Numbered <- 0
+WithoutSVA_genes_Differential_PosFC$IsletChromHMM_Numbered <- 0
+WithoutSVA_genes_Differential_NegFC$IsletChromHMM_Numbered <- 0
+for(i in length(ChromHMM_States):1)
+{
+  Islet_ChromHMM_State <- Islet_ChromHMM[which(Islet_ChromHMM$V4 %in% ChromHMM_States[i]),]
+  Islet_ChromHMM_State_GR <- GRanges(seqnames=Islet_ChromHMM_State$V1, ranges=IRanges(start=Islet_ChromHMM_State$V2, end=Islet_ChromHMM_State$V3))
+  
+  Overlaps_AllConsensusPeaks <- findOverlaps(WithoutSVA_genes_GR, Islet_ChromHMM_State_GR, select="first")
+  Overlaps_DifferentialPeaks <- findOverlaps(WithoutSVA_genes_Differential_GR, Islet_ChromHMM_State_GR, select="first")
+  Overlaps_Differential_NegFC <- findOverlaps(WithoutSVA_genes_Differential_NegFC_GR, Islet_ChromHMM_State_GR, select="first")
+  Overlaps_Differential_PosFC <- findOverlaps(WithoutSVA_genes_Differential_PosFC_GR, Islet_ChromHMM_State_GR, select="first")
+  
+  Overlaps_AllConsensusPeaks <- cbind(1:length(Overlaps_AllConsensusPeaks), Overlaps_AllConsensusPeaks)
+  Overlaps_DifferentialPeaks <- cbind(1:length(Overlaps_DifferentialPeaks), Overlaps_DifferentialPeaks)
+  Overlaps_Differential_NegFC <- cbind(1:length(Overlaps_Differential_NegFC), Overlaps_Differential_NegFC)
+  Overlaps_Differential_PosFC <- cbind(1:length(Overlaps_Differential_PosFC), Overlaps_Differential_PosFC)
+  
+  Overlaps_AllConsensusPeaks <- Overlaps_AllConsensusPeaks[complete.cases(Overlaps_AllConsensusPeaks),]
+  Overlaps_DifferentialPeaks <- Overlaps_DifferentialPeaks[complete.cases(Overlaps_DifferentialPeaks),]
+  Overlaps_Differential_NegFC <- Overlaps_Differential_NegFC[complete.cases(Overlaps_Differential_NegFC),]
+  Overlaps_Differential_PosFC <- Overlaps_Differential_PosFC[complete.cases(Overlaps_Differential_PosFC),]
+  
+  WithoutSVA_genes$IsletChromHMM[Overlaps_AllConsensusPeaks[,1]] <- ChromHMM_States[i]
+  WithoutSVA_genes_Differential$IsletChromHMM[Overlaps_DifferentialPeaks[,1]] <- ChromHMM_States[i]
+  WithoutSVA_genes$IsletChromHMM_Numbered[Overlaps_AllConsensusPeaks[,1]] <- i
+  WithoutSVA_genes_Differential$IsletChromHMM_Numbered[Overlaps_DifferentialPeaks[,1]] <- i
+  
+  if(is.matrix(Overlaps_Differential_NegFC) == TRUE)
+  {
+    WithoutSVA_genes_Differential_NegFC$IsletChromHMM[Overlaps_Differential_NegFC[,1]] <- ChromHMM_States[i]
+    WithoutSVA_genes_Differential_NegFC$IsletChromHMM_Numbered[Overlaps_Differential_NegFC[,1]] <- i
+  }
+  else if(is.vector(Overlaps_Differential_NegFC) == TRUE)
+  {
+    WithoutSVA_genes_Differential_NegFC$IsletChromHMM[Overlaps_Differential_NegFC[1]] <- ChromHMM_States[i]
+    WithoutSVA_genes_Differential_NegFC$IsletChromHMM_Numbered[Overlaps_Differential_NegFC[1]] <- i
+  }
+  else
+  {
+    next;
+  }
+  
+  if(is.matrix(Overlaps_Differential_PosFC) == TRUE)
+  {
+    WithoutSVA_genes_Differential_PosFC$IsletChromHMM[Overlaps_Differential_PosFC[,1]] <- ChromHMM_States[i]
+    WithoutSVA_genes_Differential_PosFC$IsletChromHMM_Numbered[Overlaps_Differential_PosFC[,1]] <- i
+  }
+  else if(is.vector(Overlaps_Differential_PosFC) == TRUE)
+  {
+    WithoutSVA_genes_Differential_PosFC$IsletChromHMM[Overlaps_Differential_PosFC[1]] <- ChromHMM_States[i]
+    WithoutSVA_genes_Differential_PosFC$IsletChromHMM_Numbered[Overlaps_Differential_PosFC[1]] <- i
+  }
+  else
+  {
+    next;
+  }
+}
+WithoutSVA_genes_Table <- as.data.frame(table(WithoutSVA_genes$IsletChromHMM_Numbered))
+WithoutSVA_genes_Differential_Table <- as.data.frame(table(WithoutSVA_genes_Differential$IsletChromHMM_Numbered))
+WithoutSVA_genes_Differential_PosFC_Table <- as.data.frame(table(WithoutSVA_genes_Differential_PosFC$IsletChromHMM_Numbered))
+WithoutSVA_genes_Differential_NegFC_Table <- as.data.frame(table(WithoutSVA_genes_Differential_NegFC$IsletChromHMM_Numbered))
+if(WithoutSVA_genes_Table[1,1] == 0) { WithoutSVA_genes_Table <- WithoutSVA_genes_Table[-1,] }
+for(i in 2:length(ChromHMM_States))
+{
+  if(WithoutSVA_genes_Table[i,1] != i)
+  {
+    WithoutSVA_genes_Table <- rbind(WithoutSVA_genes_Table[1:(i-1),], c(i,0), WithoutSVA_genes_Table[i:nrow(WithoutSVA_genes_Table),])
+  }
+  if(WithoutSVA_genes_Differential_Table[i,1] != i)
+  {
+    WithoutSVA_genes_Differential_Table <- rbind(WithoutSVA_genes_Differential_Table[1:(i-1),], c(i,0), WithoutSVA_genes_Differential_Table[i:nrow(WithoutSVA_genes_Differential_Table),])
+  }
+  if(WithoutSVA_genes_Differential_PosFC_Table[i,1] != i)
+  {
+    WithoutSVA_genes_Differential_PosFC_Table <- rbind(WithoutSVA_genes_Differential_PosFC_Table[1:(i-1),], c(i,0), WithoutSVA_genes_Differential_PosFC_Table[i:nrow(WithoutSVA_genes_Differential_PosFC_Table),])
+  }
+  if(WithoutSVA_genes_Differential_NegFC_Table[i,1] != i)
+  {
+    WithoutSVA_genes_Differential_NegFC_Table <- rbind(WithoutSVA_genes_Differential_NegFC_Table[1:(i-1),], c(i,0), WithoutSVA_genes_Differential_NegFC_Table[i:nrow(WithoutSVA_genes_Differential_NegFC_Table),])
+  }
+}
+WithoutSVA_genes_Table$Var1 <- 1:13; WithoutSVA_genes_Table$Categories <- rep("ConsensusPeak", times=nrow(WithoutSVA_genes_Table))
+WithoutSVA_genes_Differential_Table$Var1 <- 1:13; WithoutSVA_genes_Differential_Table$Categories <- rep("DifferentialPeaks", times=nrow(WithoutSVA_genes_Differential_Table))
+WithoutSVA_genes_Differential_PosFC_Table$Var1 <- 1:13; WithoutSVA_genes_Differential_PosFC_Table$Categories <- rep("PosFC", times=nrow(WithoutSVA_genes_Differential_PosFC_Table))
+WithoutSVA_genes_Differential_NegFC_Table$Var1 <- 1:13; WithoutSVA_genes_Differential_NegFC_Table$Categories <- rep("NegFC", times=nrow(WithoutSVA_genes_Differential_NegFC_Table))
+
+WithoutSVA_genes_Table$ChromHMM_States_Names <- ChromHMM_States
+WithoutSVA_genes_Differential_Table$ChromHMM_States_Names <- ChromHMM_States
+WithoutSVA_genes_Differential_PosFC_Table$ChromHMM_States_Names <- ChromHMM_States
+WithoutSVA_genes_Differential_NegFC_Table$ChromHMM_States_Names <- ChromHMM_States
+
+WithoutSVA_genes_Table$Fractions <- WithoutSVA_genes_Table$Freq/sum(WithoutSVA_genes_Table$Freq)
+WithoutSVA_genes_Differential_Table$Fractions <- WithoutSVA_genes_Differential_Table$Freq/sum(WithoutSVA_genes_Differential_Table$Freq)
+WithoutSVA_genes_Differential_PosFC_Table$Fractions <- WithoutSVA_genes_Differential_PosFC_Table$Freq/sum(WithoutSVA_genes_Differential_PosFC_Table$Freq)
+WithoutSVA_genes_Differential_NegFC_Table$Fractions <- WithoutSVA_genes_Differential_NegFC_Table$Freq/sum(WithoutSVA_genes_Differential_NegFC_Table$Freq)
+
+prop <- rbind(WithoutSVA_genes_Table[,c("Categories", "Fractions", "Var1", "ChromHMM_States_Names")], WithoutSVA_genes_Differential_Table[,c("Categories", "Fractions", "Var1", "ChromHMM_States_Names")], WithoutSVA_genes_Differential_PosFC_Table[,c("Categories", "Fractions", "Var1", "ChromHMM_States_Names")], WithoutSVA_genes_Differential_NegFC_Table[,c("Categories", "Fractions", "Var1", "ChromHMM_States_Names")])
+prop$Var1 <- factor(prop$Var1, levels=unique(prop$Var1))
+prop$order <- 13-as.numeric(prop$Var1)+1
+
+# ggplot
+g <- ggplot(prop, aes(x=Categories, y=Fractions,fill=reorder(ChromHMM_States_Names,order))) + geom_bar(position="fill", stat="identity") + scale_fill_manual(values=c("1_Active_TSS"="#FF0000","14_Bivalent/poised_TSS"="#CF0BC6","2_Weak_TSS"="#FF6969","9_Active_enhancer_1"="#FACA00","10_Active_enhancer_2"="#FACA00", "11_Weak_enhancer"="#FFFC04", "8_Genic_enhancer"="#FFFC04", "3_Flanking_TSS"="#FF4500", "5_Strong_transcription"="#00B050", "6_Weak_transcription"="#00B050", "16_Repressed_polycomb"="#7F7F7F", "17_Weak_repressed_polycomb"="#7F7F7F", "18_Quiescent/low_signal"="#FFFFFF")) + theme(axis.text.x=element_text(angle=90, hjust=1))
+print(g)
+```
+
+
+Pie-size plot
+```{r}
+library(pheatmap)
+# All Consensus Peaks
+ConsensusPeaks<-read.table("./DifferentialPeaksAnalysis/DiffBind_Diabetic-Non-Diabetic_AgeSexRaceMatched_ConsensusPeaks.txt", header=TRUE)
+PeakFreq_Mat <- matrix(nrow=6, ncol=6)
+for(i in 1:nrow(PeakFreq_Mat))
+{
+  for(j in 1:ncol(PeakFreq_Mat))
+  {
+    PeakFreq_Mat[i,j] <- nrow(ConsensusPeaks[which(ConsensusPeaks$Called1==(i-1) & ConsensusPeaks$Called2==(j-1)),])
+  }
+}
+colnames(PeakFreq_Mat) <- paste("T2D", 0:5, sep=".")
+rownames(PeakFreq_Mat) <- paste("ND", 0:5, sep=".")
+pheatmap(PeakFreq_Mat, cluster_rows=FALSE, cluster_cols=FALSE, display_numbers=TRUE, fontsize_number=10, main="All Consensus Peaks", colorRampPalette(c("azure2","cadetblue2","blue","darkblue"))(100))
+# Size chart
+PeakFreq_Mat_Sizes <- matrix(nrow=nrow(PeakFreq_Mat)*ncol(PeakFreq_Mat), ncol=3)
+count <- 0
+for(i in 0:5)
+{
+  for(j in 0:5)
+  {
+    count <- count +1
+    PeakFreq_Mat_Sizes[count,1] <- i
+    PeakFreq_Mat_Sizes[count,2] <- j
+    PeakFreq_Mat_Sizes[count,3] <- PeakFreq_Mat[i+1, j+1]
+  }
+}
+colnames(PeakFreq_Mat_Sizes) <- c("ND", "T2D", "counts")
+PeakFreq_Mat_Sizes <- as.data.frame(PeakFreq_Mat_Sizes)
+PeakFreq_Mat_Sizes <- PeakFreq_Mat_Sizes[which((PeakFreq_Mat_Sizes$ND + PeakFreq_Mat_Sizes$T2D)>2),]
+PeakFreq_Mat_Sizes <- PeakFreq_Mat_Sizes[which(!(PeakFreq_Mat_Sizes$ND==2 & PeakFreq_Mat_Sizes$T2D==1)),]
+PeakFreq_Mat_Sizes <- PeakFreq_Mat_Sizes[which(!(PeakFreq_Mat_Sizes$ND==1 & PeakFreq_Mat_Sizes$T2D==2)),]
+ggplot(PeakFreq_Mat_Sizes, aes(ND, T2D, size=counts, alpha=0.1)) + geom_point() + xlim(-0.5, 5.5) + ylim(-0.5,5.5) + scale_size_area(max_size = 50) + ggtitle("All Consensus Peaks")
+
+# Differential Peaks
+ConsensusPeaks<-read.table("./DifferentialPeaksAnalysis/DiffBind_Diabetic-Non-Diabetic_AgeSexRaceMatched_ConsensusPeaks.txt", header=TRUE)
+ConsensusPeaks<-ConsensusPeaks[which((ConsensusPeaks$Called1+ConsensusPeaks$Called2)>2),]
+ConsensusPeaks<-ConsensusPeaks[which(!(ConsensusPeaks$Called1==2 & ConsensusPeaks$Called2==1) & !(ConsensusPeaks$Called1==1 & ConsensusPeaks$Called2==2)),]
+ConsensusPeaks$PeakNames<-paste("ConsensusPeak_",1:nrow(ConsensusPeaks),sep="")
+WithSVA_genes_Differential <- read.table("./DifferentialPeaksAnalysis/DifferentialPeaks_AgeSexRacematched_WithSVA.bed", header=FALSE)
+WithSVA_DiffPeaks <- merge(WithSVA_genes_Differential, ConsensusPeaks, by.x="V4", by.y="PeakNames", all.x=TRUE)
+PeakFreq_Mat <- matrix(nrow=6, ncol=6)
+for(i in 1:nrow(PeakFreq_Mat))
+{
+  for(j in 1:ncol(PeakFreq_Mat))
+  {
+    PeakFreq_Mat[i,j] <- nrow(WithSVA_DiffPeaks[which(WithSVA_DiffPeaks$Called1==(i-1) & WithSVA_DiffPeaks$Called2==(j-1)),])
+  }
+}
+colnames(PeakFreq_Mat) <- paste("T2D", 0:5, sep=".")
+rownames(PeakFreq_Mat) <- paste("ND", 0:5, sep=".")
+library(RColorBrewer)
+pheatmap(PeakFreq_Mat, cluster_rows=FALSE, cluster_cols=FALSE, display_numbers=TRUE, fontsize_number=12, main="Differential Peaks (Cutoff=0.10; 93/1882 overlap caQTLs)", color=colorRampPalette(c("azure2","cadetblue2","blue","darkblue"))(100), number_color="red", number_format="%0.0f")
+# size chart
+PeakFreq_Mat_Sizes <- matrix(nrow=nrow(PeakFreq_Mat)*ncol(PeakFreq_Mat), ncol=3)
+count <- 0
+for(i in 0:5)
+{
+  for(j in 0:5)
+  {
+    count <- count +1
+    PeakFreq_Mat_Sizes[count,1] <- i
+    PeakFreq_Mat_Sizes[count,2] <- j
+    PeakFreq_Mat_Sizes[count,3] <- PeakFreq_Mat[i+1, j+1]
+  }
+}
+colnames(PeakFreq_Mat_Sizes) <- c("ND", "T2D", "counts")
+ggplot(as.data.frame(PeakFreq_Mat_Sizes), aes(ND, T2D, size=counts, alpha=0.1)) + geom_point() + xlim(0, 5.5) + ylim(0,5.5) + scale_size_area(max_size = 55)
+PeakFreq_Mat_Sizes_AllDifferential <- PeakFreq_Mat_Sizes
+
+# Differential Peaks overlapping caQTLs
+ConsensusPeaks<-read.table("./DifferentialPeaksAnalysis/DiffBind_Diabetic-Non-Diabetic_AgeSexRaceMatched_ConsensusPeaks.txt", header=TRUE)
+ConsensusPeaks<-ConsensusPeaks[which((ConsensusPeaks$Called1+ConsensusPeaks$Called2)>2),]
+ConsensusPeaks<-ConsensusPeaks[which(!(ConsensusPeaks$Called1==2 & ConsensusPeaks$Called2==1) & !(ConsensusPeaks$Called1==1 & ConsensusPeaks$Called2==2)),]
+ConsensusPeaks$PeakNames<-paste("ConsensusPeak_",1:nrow(ConsensusPeaks),sep="")
+WithSVA_genes_Differential <- read.table("./DifferentialPeaksAnalysis/DifferentialPeaks_AgeSexRacematched_WithSVA_OverlappingCaQTLs.bed", header=FALSE)
+WithSVA_DiffPeaks <- merge(WithSVA_genes_Differential, ConsensusPeaks, by.x="V4", by.y="PeakNames", all.x=TRUE)
+PeakFreq_Mat <- matrix(nrow=6, ncol=6)
+for(i in 1:nrow(PeakFreq_Mat))
+{
+  for(j in 1:ncol(PeakFreq_Mat))
+  {
+    PeakFreq_Mat[i,j] <- nrow(WithSVA_DiffPeaks[which(WithSVA_DiffPeaks$Called1==(i-1) & WithSVA_DiffPeaks$Called2==(j-1)),])
+  }
+}
+colnames(PeakFreq_Mat) <- paste("T2D", 0:5, sep=".")
+rownames(PeakFreq_Mat) <- paste("ND", 0:5, sep=".")
+library(RColorBrewer)
+pheatmap(PeakFreq_Mat, cluster_rows=FALSE, cluster_cols=FALSE, display_numbers=TRUE, fontsize_number=12, main="Differential Peaks (Cutoff=0.10; 93/1882 overlap caQTLs)", color=colorRampPalette(c("azure2","cadetblue2","blue","darkblue"))(100), number_color="red", number_format="%0.0f")
+# size chart
+PeakFreq_Mat_Sizes <- matrix(nrow=nrow(PeakFreq_Mat)*ncol(PeakFreq_Mat), ncol=3)
+count <- 0
+for(i in 0:5)
+{
+  for(j in 0:5)
+  {
+    count <- count +1
+    PeakFreq_Mat_Sizes[count,1] <- i
+    PeakFreq_Mat_Sizes[count,2] <- j
+    PeakFreq_Mat_Sizes[count,3] <- PeakFreq_Mat[i+1, j+1]
+  }
+}
+colnames(PeakFreq_Mat_Sizes) <- c("ND", "T2D", "counts")
+ggplot(as.data.frame(PeakFreq_Mat_Sizes), aes(ND, T2D, size=counts, alpha=0.1)) + geom_point() + xlim(0, 5.5) + ylim(0,5.5) + scale_size_area(max_size = 55)
+
+
+PeakFreq_Mat_Sizes <- cbind(PeakFreq_Mat_Sizes[,1:3], group=rep(0, times=nrow(PeakFreq_Mat_Sizes)))[,c(1,2,4,3)]
+PeakFreq_Mat_Sizes_AllDifferential <- cbind(PeakFreq_Mat_Sizes_AllDifferential[,1:3], group=rep(1, times=nrow(PeakFreq_Mat_Sizes_AllDifferential)))[,c(1,2,4,3)]
+PeakFreq_Mat_Sizes_AllDifferential[,4] <- PeakFreq_Mat_Sizes_AllDifferential[,4] - PeakFreq_Mat_Sizes[,4]
+PeakFreq_Mat_Sizes_Combined <- as.data.frame(rbind(PeakFreq_Mat_Sizes, PeakFreq_Mat_Sizes_AllDifferential))
+PeakFreq_Mat_Sizes_Combined$group <- factor(PeakFreq_Mat_Sizes_Combined$group) # make group a factor
+PeakFreq_Mat_Sizes_Combined <- cbind(PeakFreq_Mat_Sizes_Combined, case=1:nrow(PeakFreq_Mat_Sizes_Combined))
+for(i in 1:nrow(PeakFreq_Mat_Sizes_Combined))
+{
+  PeakFreq_Mat_Sizes_Combined$case[i] <- paste(PeakFreq_Mat_Sizes_Combined[i,"ND"], PeakFreq_Mat_Sizes_Combined[i,"T2D"], sep=":")
+}
+PeakFreq_Mat_Sizes_Combined$case <- factor(PeakFreq_Mat_Sizes_Combined$case)
+library(ggforce); library(dplyr)
+# calculate the start and end angles for each pie
+PeakFreq_Mat_Sizes_Combined <- PeakFreq_Mat_Sizes_Combined[which((PeakFreq_Mat_Sizes_Combined$ND + PeakFreq_Mat_Sizes_Combined$T2D)>2),]
+PeakFreq_Mat_Sizes_Combined <- PeakFreq_Mat_Sizes_Combined[which(!(PeakFreq_Mat_Sizes_Combined$ND==2 & PeakFreq_Mat_Sizes_Combined$T2D==1)),]
+PeakFreq_Mat_Sizes_Combined <- PeakFreq_Mat_Sizes_Combined[which(!(PeakFreq_Mat_Sizes_Combined$ND==1 & PeakFreq_Mat_Sizes_Combined$T2D==2)),]
+data_graph <- PeakFreq_Mat_Sizes_Combined
+colnames(data_graph) <- c("x", "y", "group", "counts", "case")
+data_graph <- left_join(data_graph, data_graph %>% group_by(case) %>% summarize(counts_total = sum(counts))) %>% group_by(case) %>% mutate(counts_frac = 2*pi*cumsum(counts)/counts_total, start = lag(counts_frac, default = 0))
+# position of the labels
+data_labels <- data_graph %>% group_by(case) %>% summarize(x = x[1], y = y[1], counts_total = counts_total[1])
+# overall scaling for pie size
+scale = .70/sqrt(max(data_graph$counts_total))
+# draw the pies
+p <- ggplot(data_graph) + geom_arc_bar(aes(x0 = x, y0 = y, r0 = 0, r = sqrt(counts_total)*scale, start = start, end = counts_frac, fill = group)) + geom_text(data = data_labels, aes(label = case, x = x, y = y + scale*sqrt(counts_total) + .05), size=0/.pt, vjust = 0) + coord_fixed() + scale_x_continuous(breaks = c(0, 1, 2, 3, 4, 5), labels = c("ND0", "ND1", "ND2", "ND3","ND4", "ND5"), name = "x axis") + scale_y_continuous(breaks = c(0, 1, 2, 3, 4, 5), labels = c("T2D0", "T2D1", "T2D2", "T2D3","T2D4", "T2D5"), name = "y axis") + theme_minimal() + theme(panel.grid.minor = element_blank())
+print(p)
+```
+
+
+
+Differential Genes
+Correlating ATAC-seq and RNA-seq logFC (Only Differential Peaks overlapping promoters; With SVA)
+```{r}
+library(stringr)
+CutOff_Value<-0.05; MinimumFPKMCount<-5; MinimumReadCount<-50; PRIOR.COUNT<-1; NumSamplesAboveFPKM<-3
+# MetaData
+MetaData<-read.csv("./DifferentialGenesAnalysis/Meta-Data_Table_Diabetic_Non-Diabetic_AgeRaceSexMatchedOnly_10Samples.csv",header=TRUE)
+MetaData_Binarized<-MetaData
+MetaData_Binarized$Condition<-as.factor((MetaData$Condition=="Diabetic")*2+(MetaData$Condition=="Non-Diabetic")*1)
+MetaData_Binarized$Sex<-as.factor((MetaData$Sex=="M")*2+(MetaData$Sex=="F")*1)
+MetaData_Binarized$Race<-as.factor((MetaData$Race=="W")*2+(MetaData$Race=="H")*1)
+MetaData_Binarized$Age<-as.factor((MetaData$Age>=60)*2+(MetaData$Age<=30)*1)
+MetaData_Binarized$BMI<-as.factor((MetaData$BMI>=18.5 & MetaData$BMI<24.9)*1+(MetaData$BMI>=24.9 & MetaData$BMI<29.9)*2+(MetaData$BMI>29.9)*3)
+MetaData_Binarized$ERCC_Spike.In<-as.factor((MetaData$ERCC_Spike.In=="Mix1")*1)
+# Removing Sex Chromosomes
+genes<-read.table("Homo_sapiens_final_chr_added.GRCh37.70_ERCC92_Genes.txt",header=FALSE,row.names=1)
+genes$SYMBOL<-mapIds(org.Hs.eg.db,keys=as.character(genes[,5]),column='ALIAS',keytype="ENSEMBL",multiVals="first")
+Islet2<-read.table("./Islets.genes.results/Islet2.genes.results",header=TRUE)
+rownames(Islet2)<-Islet2$gene_id
+temp_mat<-merge(Islet2,genes,by=0)
+SexChromosomesPosition<-which(temp_mat$V2=="chrX" | temp_mat$V2=="chrY" | temp_mat$V2=="chrM")
+genes<-genes[-SexChromosomesPosition,]
+# Islets RNA-seq
+Islet2<-read.table("./Islets.genes.results/Islet2.genes.results",header=TRUE); Islet2<-Islet2[-SexChromosomesPosition,]
+Islet4<-read.table("./Islets.genes.results/Islet4.genes.results",header=TRUE); Islet4<-Islet4[-SexChromosomesPosition,]
+Islet5<-read.table("./Islets.genes.results/Islet5.genes.results",header=TRUE); Islet5<-Islet5[-SexChromosomesPosition,]
+Islet17<-read.table("./Islets.genes.results/Islet17.genes.results",header=TRUE); Islet17<-Islet17[-SexChromosomesPosition,]
+Islet20<-read.table("./Islets.genes.results/Islet20.genes.results",header=TRUE); Islet20<-Islet20[-SexChromosomesPosition,]
+Islet12<-read.table("./Islets.genes.results/Islet12.genes.results",header=TRUE); Islet12<-Islet12[-SexChromosomesPosition,]
+Islet21<-read.table("./Islets.genes.results/Islet21.genes.results",header=TRUE); Islet21<-Islet21[-SexChromosomesPosition,]
+Islet22<-read.table("./Islets.genes.results/Islet22.genes.results",header=TRUE); Islet22<-Islet22[-SexChromosomesPosition,]
+Islet23<-read.table("./Islets.genes.results/Islet23.genes.results",header=TRUE); Islet23<-Islet23[-SexChromosomesPosition,]
+Islet24<-read.table("./Islets.genes.results/Islet24.genes.results",header=TRUE); Islet24<-Islet24[-SexChromosomesPosition,]
+# ERCC
+ERCC<-read.table("./DifferentialGenesAnalysis/ERCC_Controls_Analysis.txt",header=TRUE)
+# Data Janitoring
+FPKM_Matrix<-cbind(Islet2$FPKM,Islet4$FPKM,Islet5$FPKM,Islet17$FPKM,Islet20$FPKM,Islet12$FPKM,Islet21$FPKM,Islet22$FPKM,Islet23$FPKM,Islet24$FPKM)
+colnames(FPKM_Matrix)<-c("Islet2","Islet4","Islet5","Islet17","Islet20","Islet12","Islet21","Islet22","Islet23","Islet24")
+rownames(FPKM_Matrix)<-Islet2$gene_id
+ExpectedCounts_Matrix<-cbind(Islet2$expected_count,Islet4$expected_count,Islet5$expected_count,Islet17$expected_count,Islet20$expected_count,
+                             Islet12$expected_count,Islet21$expected_count,Islet22$expected_count,Islet23$expected_count,Islet24$expected_count)
+colnames(ExpectedCounts_Matrix)<-c("Islet2","Islet4","Islet5","Islet17","Islet20","Islet12","Islet21","Islet22","Islet23","Islet24")
+rownames(ExpectedCounts_Matrix)<-Islet2$gene_id
+# Genes
+genes<-read.table("Homo_sapiens_final_chr_added.GRCh37.70_ERCC92_Genes.txt",header=FALSE,row.names=1)
+genes$SYMBOL<-mapIds(org.Hs.eg.db,keys=as.character(genes[,5]),column='ALIAS',keytype="ENSEMBL",multiVals="first")
+genes<-genes[-SexChromosomesPosition,]
+# Removing ERCC genes
+genes<-genes[1:(nrow(ExpectedCounts_Matrix)-92),]
+FPKM_Matrix<-FPKM_Matrix[1:(nrow(FPKM_Matrix)-92),]
+ExpectedCounts_Matrix<-ExpectedCounts_Matrix[1:(nrow(ExpectedCounts_Matrix)-92),]
+# Filtering 
+genes<-genes[which(rowSums((FPKM_Matrix>MinimumFPKMCount)*1)>NumSamplesAboveFPKM),]
+ExpectedCounts_Matrix<-ExpectedCounts_Matrix[which(rowSums((FPKM_Matrix>MinimumFPKMCount)*1)>NumSamplesAboveFPKM),]
+# EdgeR Normalization 
+y <- DGEList(counts=ExpectedCounts_Matrix, genes=genes, group=MetaData$Condition)
+y <- calcNormFactors(y,method="TMM")
+data<-cpm(y$counts,log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size)
+# Correlation Plots
+CorrelationMatrix_pearson<-matrix(nrow=ncol(data),ncol=ncol(data))
+CorrelationMatrix_spearman<-matrix(nrow=ncol(data),ncol=ncol(data))
+for(i in 1:ncol(data)){
+  for(j in 1:ncol(data)){
+    CorrelationMatrix_pearson[i,j]<-cor(data[,i],data[,j],method="pearson")
+    CorrelationMatrix_spearman[i,j]<-cor(data[,i],data[,j],method="spearman")}}
+colnames(CorrelationMatrix_pearson)<-MetaData$Sample; colnames(CorrelationMatrix_spearman)<-MetaData$Sample
+rownames(CorrelationMatrix_pearson)<-MetaData$Sample; rownames(CorrelationMatrix_spearman)<-MetaData$Sample
+pheatmap(CorrelationMatrix_pearson,cluster_rows=TRUE,cluster_cols=TRUE,
+         show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,main="R (pearson)")
+pheatmap(CorrelationMatrix_spearman,cluster_rows=TRUE,cluster_cols=TRUE,
+         show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,main="R (spearman)")
+##########################################################    PVCA Analysis    ##################################################
+pvca.res.no<-PVCA(cpm(y$counts,log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size),MetaData_Binarized[,c("Condition","Sex","Race","BMI","ERCC_Spike.In")],0.8,FALSE)
+PlotPVCA(pvca.res.no,"PVCA (Age, Sex and Race Matched) (No Interaction)")
+##########################################################    PCA Analysis    ##################################################
+y_pca_all<-prcomp(cpm(y$counts,log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size),center=TRUE,scale.=TRUE)
+PCA_Matrix<-data.frame(y_pca_all$rotation)
+p0<-ggplot(data=data.frame(y_pca_all$rotation), aes(x=PC1,y=PC2,color=MetaData_Binarized$Condition,label=MetaData_Binarized$Sample))
+p0 + geom_text(check_overlap = FALSE, size=5) + labs(x=paste("PC1 [",summary(y_pca_all)$importance[2,1]*100,"% Variance Explained]"),
+                                                     y=paste("PC2 [",summary(y_pca_all)$importance[2,2]*100,"% Variance Explained]"),
+                                                     title="PCA of All Consensus Peaks")
+NumberMetaVariables<-5
+CorrelationHeatmap<-matrix(nrow=NumberMetaVariables,ncol=ncol(PCA_Matrix))
+for(i in 1:ncol(PCA_Matrix))
+{
+  CorrelationHeatmap[1,i]<-cor(as.numeric(MetaData_Binarized$Condition),PCA_Matrix[,i],method="pearson")
+  CorrelationHeatmap[2,i]<-cor(as.numeric(MetaData_Binarized$Sex),PCA_Matrix[,i],method="pearson")
+  CorrelationHeatmap[3,i]<-cor(as.numeric(MetaData_Binarized$Race),PCA_Matrix[,i],method="pearson")
+  CorrelationHeatmap[4,i]<-cor(MetaData$BMI,PCA_Matrix[,i],method="pearson")
+  CorrelationHeatmap[5,i]<-cor(as.numeric(MetaData_Binarized$ERCC_Spike.In),PCA_Matrix[,i],method="pearson")
+}
+rownames(CorrelationHeatmap)<-c("Condition","Sex","Race","BMI","ERCC-spike-in")
+colnames(CorrelationHeatmap)<-colnames(y_pca_all$rotation)
+pheatmap(CorrelationHeatmap,cluster_rows=FALSE,cluster_cols=FALSE,show_rownames=TRUE,show_colnames=TRUE,display_numbers=TRUE,
+         main="R (pearson)")
+##########################################################    SVA Analysis    ##################################################
+y <- DGEList(counts=ExpectedCounts_Matrix, genes=genes, group=MetaData$Condition)
+y <- calcNormFactors(y,method="TMM")
+main.design<-model.matrix(~factor(Condition) + factor(Race) + factor(Sex) + factor(ERCC_Spike.In),data=MetaData_Binarized)
+null.design <- model.matrix(~1,data=MetaData_Binarized)
+dat <- y$counts %*% diag(as.vector(calcNormFactors(y$counts)))
+# NumSurrVar <- num.sv(dat, main.design)
+NumSurrVar<-1
+Control.Prob<-empirical.controls(dat, main.design, null.design,n.sv=NumSurrVar,B=25,type="counts")
+svobj.group<-svaseq(dat, main.design, null.design, n.sv=NumSurrVar,B=25,constant=PRIOR.COUNT,control=Control.Prob)
+##########################################################    EdgeR Analysis With SVA    ##################################################
+y <- DGEList(counts=ExpectedCounts_Matrix, genes=genes, group=MetaData$Condition)
+y <- calcNormFactors(y,method="TMM")
+sva.design <- model.matrix(~svobj.group$sv+MetaData_Binarized$Race+MetaData_Binarized$Sex+MetaData_Binarized$ERCC_Spike.In)
+rownames(sva.design) <- colnames(y)
+y.sva <- estimateDisp(y, sva.design, robust=TRUE)
+y <- DGEList(counts=ExpectedCounts_Matrix, genes=genes, group=MetaData$Condition)
+y <- calcNormFactors(y,method="TMM")
+design <- model.matrix(~svobj.group$sv+MetaData_Binarized$Race+MetaData_Binarized$Sex+MetaData_Binarized$ERCC_Spike.In+MetaData_Binarized$Condition)
+rownames(design) <- colnames(y)
+y <- estimateDisp(y, design, robust=TRUE)
+test.method="glm" # ql | glm
+if (test.method=="glm") {
+  rna.glm <- glmFit(y, design)
+  rna.glmfit <- glmLRT(rna.glm)
+  sva.rna.glm <- glmFit(y.sva, sva.design)
+  sva.rna.glmfit <- glmLRT(sva.rna.glm)
+}
+if (test.method=="ql") {
+  rna.glm <- glmQLFit(y, design, robust=TRUE)
+  rna.glmfit <- glmQLFTest(rna.glm)
+  sva.rna.glm <- glmQLFit(y.sva, sva.design, robust=TRUE)
+  sva.rna.glmfit <- glmQLFTest(sva.rna.glm)
+}
+# Plotting p-values
+hist(rna.glmfit$table$PValue,breaks=200,xlab="p-values",main="Histogram of p-values (WithSVA)")
+# Adjusting p-values
+rna.glmfit$table$AdjustedPValue=p.adjust(rna.glmfit$table$PValue, method="BH")
+# Re-ordering rows
+rna.glmfit$genes<-rna.glmfit$genes[order(rna.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+OrderedCPMvalues<-cpm(y$counts %*% diag(as.vector(calcNormFactors(y$counts))),log=T,prior.count=PRIOR.COUNT,lib.size=y$samples$lib.size)[order(rna.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+colnames(OrderedCPMvalues)<-MetaData_Binarized$Sample
+rna.glmfit$table<-rna.glmfit$table[order(rna.glmfit$table$AdjustedPValue,decreasing=FALSE),]
+# MA Plot of Differential Peaks
+qplot(x=logCPM,y=logFC,data=rna.glmfit$table,color=AdjustedPValue>CutOff_Value, main="MA Plot of Differential Peaks (WithSVA)")
+# Heatmap 
+pheatmap(OrderedCPMvalues[which(rna.glmfit$table$AdjustedPValue<CutOff_Value),], scale="row", show_rownames=FALSE,main="Heatmap of Differential Peaks (WithSVA)",clustering_distance_cols="correlation")
+# PVCA of NoiseSubtractedCPM matrix
+pvca.res.no<-PVCA(OrderedCPMvalues,MetaData_Binarized[,c("Condition","Sex","Race","BMI","ERCC_Spike.In")],0.8,FALSE)
+PlotPVCA(pvca.res.no,"PVCA (Without Subtraction)")
+pvca.res.no<-PVCA(NoiseSubtractedCPM,MetaData_Binarized[,c("Condition","Sex","Race","BMI","ERCC_Spike.In")],0.8,FALSE)
+PlotPVCA(pvca.res.no,"PVCA (After Subtraction)")
+####################################################################################################################
+FPKM_Matrix_genes_Filtered <- merge(rna.glmfit$genes,rna.glmfit$table,by=0)
+rownames(FPKM_Matrix_genes_Filtered) <- FPKM_Matrix_genes_Filtered[,1]
+FPKM_Matrix_genes_Filtered <- FPKM_Matrix_genes_Filtered[,-1]
+FPKM_Matrix_genes_Filtered <- FPKM_Matrix_genes_Filtered[complete.cases(FPKM_Matrix_genes_Filtered),]
+FPKM_Matrix_genes_Filtered[,4] <- as.factor(str_trim(FPKM_Matrix_genes_Filtered[,4]))
+FPKM_Matrix_genes_Filtered <- FPKM_Matrix_genes_Filtered[which(FPKM_Matrix_genes_Filtered[,1] %in% paste("chr",1:22,sep="")),]
+FPKM_Matrix_genes_Filtered[,1] <- factor(FPKM_Matrix_genes_Filtered[,1], levels=unique(FPKM_Matrix_genes_Filtered[,1]))
+FPKM_Matrix_genes_Filtered_GR <- GRanges(seqnames=FPKM_Matrix_genes_Filtered[,1], ranges=IRanges(start=FPKM_Matrix_genes_Filtered[,2],end=FPKM_Matrix_genes_Filtered[,3]),
+                                         strand=FPKM_Matrix_genes_Filtered[,4], id=FPKM_Matrix_genes_Filtered[,5])
+FPKM_Matrix_genes_Filtered_Promoter_GR <- promoters(FPKM_Matrix_genes_Filtered_GR, upstream=10000, downstream=5000)
+# ATAC
+CutOff_Value <- 0.10
+WithSVA_genes_Table_ATAC <- merge(WithSVA_genes, WithSVA_Table, by=0)
+WithSVA_genes_Table_ATAC <- WithSVA_genes_Table_ATAC[which(WithSVA_genes_Table_ATAC$AdjustedPValue<CutOff_Value),]
+WithSVA_genes_Table_ATAC_GR <- GRanges(seqnames=WithSVA_genes_Table_ATAC[,2], ranges=IRanges(start=WithSVA_genes_Table_ATAC[,3],end=WithSVA_genes_Table_ATAC[,4]))
+# Overlaps
+Overlaps <- findOverlaps(WithSVA_genes_Table_ATAC_GR, FPKM_Matrix_genes_Filtered_Promoter_GR, select="first")
+Overlaps <- cbind(1:length(Overlaps), Overlaps)
+Overlaps <- Overlaps[complete.cases(Overlaps),]
+WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered <- cbind(WithSVA_genes_Table_ATAC[Overlaps[,1],], FPKM_Matrix_genes_Filtered[Overlaps[,2],])
+WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,17] <- as.numeric(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,17])
+WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered <- WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[complete.cases(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered),]
+WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered <- WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[which(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,10]<CutOff_Value),]
+# Plotting
+plot(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,6], WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,17], main="With SVA")
+test <- wilcox.test(as.numeric(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[which(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,6]<0),17]), as.numeric(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[which(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,6]>0),17]), alternative="less")
+boxplot(as.numeric(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[which(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,6]<0),17]), as.numeric(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[which(WithSVA_genes_Table_ATAC_FPKM_Matrix_genes_Filtered[,6]>0),17]), col=c("red", "blue"), names=c("ATAC logFC<0", "ATAC logFC>0"), outline=TRUE, ylab="RNA-seq logFC", main=paste(test$p.value, "With SVA", sep="\t"))
+
+```
+
+

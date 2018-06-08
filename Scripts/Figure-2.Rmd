@@ -1,0 +1,475 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+Set Working Directory 
+```{r}
+WorkingDirectory <- "/Users/skn/Dropbox/Diabetes_FinalSubmission_RemoveBatchEffectArtifacts/Z.Scripts/Files/"
+```
+
+
+caQTLs
+```{r}
+setwd(WorkingDirectory)
+# rm(list=ls())
+set.seed(763937)
+require(plyr); require(GenomicRanges); require(tidyr); library(qqman)
+Rasqual_WithCov_Default <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE) 
+ColumnNames <- c("FeatureID", "rsID", "Chromosome", "SNP_Position", "RefAllele", "AltAllele", "AlelleFreq", "HWE_ChiSq", "IA", "Log10_BH", "ChiSq_Statistic", "EffectSize", "Delta", "Phi", "Overdispersion", "SNP_ID", "Num_fSNPs", "Num_testedSNPs", "Num_Iter_Null", "Num_Iter_Alt", "Random_Location", "LogLike_Null", "ConvergenenceStatus", "SqCor_fSNPs", "SqCor_rSNPs")
+colnames(Rasqual_WithCov_Default) <- ColumnNames
+# Multiple Hypotheis Correction (Without Permutation)
+Rasqual_WithCov_Default$PValue <- pchisq(Rasqual_WithCov_Default$ChiSq_Statistic, df=1, lower.tail = FALSE) # Calculating p-values from Chi-Square Statistic
+Rasqual_WithCov_Default$AdjustedPVal_1 <- (Rasqual_WithCov_Default$PValue)*(Rasqual_WithCov_Default$Num_testedSNPs)
+Rasqual_WithCov_Default$AdjustedPVal_1[which(Rasqual_WithCov_Default$AdjustedPVal_1>=1)] <- 1 # Adjusting p-values for the number of SNPs tested per peak (Multiple Hypothesis Correction 1)
+Rasqual_WithCov_Default$AdjustedPVal_2 <- p.adjust(Rasqual_WithCov_Default$AdjustedPVal_1, method="fdr") # Adjusting p-values for the number of peaks tested (Multiple Hypothesis Correction 2)
+# Multiple Hypotheis Correction (With Permutation) (Reading the Permuted Results)
+Permutation1 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation1_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation2 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation2_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation3 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation3_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation4 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation4_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation5 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation5_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation6 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation6_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation7 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation7_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation8 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation8_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation9 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation9_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation10 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation10_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation11 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation11_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation12 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation12_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation13 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation13_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation14 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation14_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation15 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation15_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation16 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation16_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation17 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation17_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation18 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation18_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation19 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation19_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation20 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation20_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation21 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation21_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation22 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation22_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation23 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation23_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation24 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation24_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation25 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation25_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation26 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation26_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation27 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation27_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation28 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation28_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation29 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation29_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation30 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation30_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation31 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation31_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation32 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation32_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation33 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation33_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation34 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation34_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation35 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation35_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation36 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation36_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation37 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation37_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation38 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation38_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation39 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation39_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation40 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation40_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation41 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation41_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation42 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation42_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation43 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation43_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation44 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation44_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation45 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation45_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation46 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation46_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation47 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation47_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation48 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation48_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation49 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation49_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+Permutation50 <- read.table("./caQTLs/RemoveUnwantedRows/Islets19_WithCovariates_Rasqual_caQTL_Results_Output_WithoutWindows_Permutation50_OnlyLeadSNPs_UnwantedRowsRemoved.txt", header=FALSE)
+# Calculating P-Values of Permuted Results
+Permutation1$V26 <- (pchisq(Permutation1$V11, df=1, lower.tail = FALSE))*Permutation1$V18; Permutation1$V26[which(Permutation1$V26>=1)]<-1; Permutation1 <- Permutation1[,c(1,26)]
+Permutation2$V26 <- (pchisq(Permutation2$V11, df=1, lower.tail = FALSE))*Permutation2$V18; Permutation2$V26[which(Permutation2$V26>=1)]<-1; Permutation2 <- Permutation2[,c(1,26)]
+Permutation3$V26 <- (pchisq(Permutation3$V11, df=1, lower.tail = FALSE))*Permutation3$V18; Permutation3$V26[which(Permutation3$V26>=1)]<-1; Permutation3 <- Permutation3[,c(1,26)]
+Permutation4$V26 <- (pchisq(Permutation4$V11, df=1, lower.tail = FALSE))*Permutation4$V18; Permutation4$V26[which(Permutation4$V26>=1)]<-1; Permutation4 <- Permutation4[,c(1,26)]
+Permutation5$V26 <- (pchisq(Permutation5$V11, df=1, lower.tail = FALSE))*Permutation5$V18; Permutation5$V26[which(Permutation5$V26>=1)]<-1; Permutation5 <- Permutation5[,c(1,26)]
+Permutation6$V26 <- (pchisq(Permutation6$V11, df=1, lower.tail = FALSE))*Permutation6$V18; Permutation6$V26[which(Permutation6$V26>=1)]<-1; Permutation6 <- Permutation6[,c(1,26)]
+Permutation7$V26 <- (pchisq(Permutation7$V11, df=1, lower.tail = FALSE))*Permutation7$V18; Permutation7$V26[which(Permutation7$V26>=1)]<-1; Permutation7 <- Permutation7[,c(1,26)]
+Permutation8$V26 <- (pchisq(Permutation8$V11, df=1, lower.tail = FALSE))*Permutation8$V18; Permutation8$V26[which(Permutation8$V26>=1)]<-1; Permutation8 <- Permutation8[,c(1,26)]
+Permutation9$V26 <- (pchisq(Permutation9$V11, df=1, lower.tail = FALSE))*Permutation9$V18; Permutation9$V26[which(Permutation9$V26>=1)]<-1; Permutation9 <- Permutation9[,c(1,26)]
+Permutation10$V26 <- (pchisq(Permutation10$V11, df=1, lower.tail = FALSE))*Permutation10$V18; Permutation10$V26[which(Permutation10$V26>=1)]<-1; Permutation10 <- Permutation10[,c(1,26)]
+Permutation11$V26 <- (pchisq(Permutation11$V11, df=1, lower.tail = FALSE))*Permutation11$V18; Permutation11$V26[which(Permutation11$V26>=1)]<-1; Permutation11 <- Permutation11[,c(1,26)]
+Permutation12$V26 <- (pchisq(Permutation12$V11, df=1, lower.tail = FALSE))*Permutation12$V18; Permutation12$V26[which(Permutation12$V26>=1)]<-1; Permutation12 <- Permutation12[,c(1,26)]
+Permutation13$V26 <- (pchisq(Permutation13$V11, df=1, lower.tail = FALSE))*Permutation13$V18; Permutation13$V26[which(Permutation13$V26>=1)]<-1; Permutation13 <- Permutation13[,c(1,26)]
+Permutation14$V26 <- (pchisq(Permutation14$V11, df=1, lower.tail = FALSE))*Permutation14$V18; Permutation14$V26[which(Permutation14$V26>=1)]<-1; Permutation14 <- Permutation14[,c(1,26)]
+Permutation15$V26 <- (pchisq(Permutation15$V11, df=1, lower.tail = FALSE))*Permutation15$V18; Permutation15$V26[which(Permutation15$V26>=1)]<-1; Permutation15 <- Permutation15[,c(1,26)]
+Permutation16$V26 <- (pchisq(Permutation16$V11, df=1, lower.tail = FALSE))*Permutation16$V18; Permutation16$V26[which(Permutation16$V26>=1)]<-1; Permutation16 <- Permutation16[,c(1,26)]
+Permutation17$V26 <- (pchisq(Permutation17$V11, df=1, lower.tail = FALSE))*Permutation17$V18; Permutation17$V26[which(Permutation17$V26>=1)]<-1; Permutation17 <- Permutation17[,c(1,26)]
+Permutation18$V26 <- (pchisq(Permutation18$V11, df=1, lower.tail = FALSE))*Permutation18$V18; Permutation18$V26[which(Permutation18$V26>=1)]<-1; Permutation18 <- Permutation18[,c(1,26)]
+Permutation19$V26 <- (pchisq(Permutation19$V11, df=1, lower.tail = FALSE))*Permutation19$V18; Permutation19$V26[which(Permutation19$V26>=1)]<-1; Permutation19 <- Permutation19[,c(1,26)]
+Permutation20$V26 <- (pchisq(Permutation20$V11, df=1, lower.tail = FALSE))*Permutation20$V18; Permutation20$V26[which(Permutation20$V26>=1)]<-1; Permutation20 <- Permutation20[,c(1,26)]
+Permutation21$V26 <- (pchisq(Permutation21$V11, df=1, lower.tail = FALSE))*Permutation21$V18; Permutation21$V26[which(Permutation21$V26>=1)]<-1; Permutation21 <- Permutation21[,c(1,26)]
+Permutation22$V26 <- (pchisq(Permutation22$V11, df=1, lower.tail = FALSE))*Permutation22$V18; Permutation22$V26[which(Permutation22$V26>=1)]<-1; Permutation22 <- Permutation22[,c(1,26)]
+Permutation23$V26 <- (pchisq(Permutation23$V11, df=1, lower.tail = FALSE))*Permutation23$V18; Permutation23$V26[which(Permutation23$V26>=1)]<-1; Permutation23 <- Permutation23[,c(1,26)]
+Permutation24$V26 <- (pchisq(Permutation24$V11, df=1, lower.tail = FALSE))*Permutation24$V18; Permutation24$V26[which(Permutation24$V26>=1)]<-1; Permutation24 <- Permutation24[,c(1,26)]
+Permutation25$V26 <- (pchisq(Permutation25$V11, df=1, lower.tail = FALSE))*Permutation25$V18; Permutation25$V26[which(Permutation25$V26>=1)]<-1; Permutation25 <- Permutation25[,c(1,26)]
+Permutation26$V26 <- (pchisq(Permutation26$V11, df=1, lower.tail = FALSE))*Permutation26$V18; Permutation26$V26[which(Permutation26$V26>=1)]<-1; Permutation26 <- Permutation26[,c(1,26)]
+Permutation27$V26 <- (pchisq(Permutation27$V11, df=1, lower.tail = FALSE))*Permutation27$V18; Permutation27$V26[which(Permutation27$V26>=1)]<-1; Permutation27 <- Permutation27[,c(1,26)]
+Permutation28$V26 <- (pchisq(Permutation28$V11, df=1, lower.tail = FALSE))*Permutation28$V18; Permutation28$V26[which(Permutation28$V26>=1)]<-1; Permutation28 <- Permutation28[,c(1,26)]
+Permutation29$V26 <- (pchisq(Permutation29$V11, df=1, lower.tail = FALSE))*Permutation29$V18; Permutation29$V26[which(Permutation29$V26>=1)]<-1; Permutation29 <- Permutation29[,c(1,26)]
+Permutation30$V26 <- (pchisq(Permutation30$V11, df=1, lower.tail = FALSE))*Permutation30$V18; Permutation30$V26[which(Permutation30$V26>=1)]<-1; Permutation30 <- Permutation30[,c(1,26)]
+Permutation31$V26 <- (pchisq(Permutation31$V11, df=1, lower.tail = FALSE))*Permutation31$V18; Permutation31$V26[which(Permutation31$V26>=1)]<-1; Permutation31 <- Permutation31[,c(1,26)]
+Permutation32$V26 <- (pchisq(Permutation32$V11, df=1, lower.tail = FALSE))*Permutation32$V18; Permutation32$V26[which(Permutation32$V26>=1)]<-1; Permutation32 <- Permutation32[,c(1,26)]
+Permutation33$V26 <- (pchisq(Permutation33$V11, df=1, lower.tail = FALSE))*Permutation33$V18; Permutation33$V26[which(Permutation33$V26>=1)]<-1; Permutation33 <- Permutation33[,c(1,26)]
+Permutation34$V26 <- (pchisq(Permutation34$V11, df=1, lower.tail = FALSE))*Permutation34$V18; Permutation34$V26[which(Permutation34$V26>=1)]<-1; Permutation34 <- Permutation34[,c(1,26)]
+Permutation35$V26 <- (pchisq(Permutation35$V11, df=1, lower.tail = FALSE))*Permutation35$V18; Permutation35$V26[which(Permutation35$V26>=1)]<-1; Permutation35 <- Permutation35[,c(1,26)]
+Permutation36$V26 <- (pchisq(Permutation36$V11, df=1, lower.tail = FALSE))*Permutation36$V18; Permutation36$V26[which(Permutation36$V26>=1)]<-1; Permutation36 <- Permutation36[,c(1,26)]
+Permutation37$V26 <- (pchisq(Permutation37$V11, df=1, lower.tail = FALSE))*Permutation37$V18; Permutation37$V26[which(Permutation37$V26>=1)]<-1; Permutation37 <- Permutation37[,c(1,26)]
+Permutation38$V26 <- (pchisq(Permutation38$V11, df=1, lower.tail = FALSE))*Permutation38$V18; Permutation38$V26[which(Permutation38$V26>=1)]<-1; Permutation38 <- Permutation38[,c(1,26)]
+Permutation39$V26 <- (pchisq(Permutation39$V11, df=1, lower.tail = FALSE))*Permutation39$V18; Permutation39$V26[which(Permutation39$V26>=1)]<-1; Permutation39 <- Permutation39[,c(1,26)]
+Permutation40$V26 <- (pchisq(Permutation40$V11, df=1, lower.tail = FALSE))*Permutation40$V18; Permutation40$V26[which(Permutation40$V26>=1)]<-1; Permutation40 <- Permutation40[,c(1,26)]
+Permutation41$V26 <- (pchisq(Permutation41$V11, df=1, lower.tail = FALSE))*Permutation41$V18; Permutation41$V26[which(Permutation41$V26>=1)]<-1; Permutation41 <- Permutation41[,c(1,26)]
+Permutation42$V26 <- (pchisq(Permutation42$V11, df=1, lower.tail = FALSE))*Permutation42$V18; Permutation42$V26[which(Permutation42$V26>=1)]<-1; Permutation42 <- Permutation42[,c(1,26)]
+Permutation43$V26 <- (pchisq(Permutation43$V11, df=1, lower.tail = FALSE))*Permutation43$V18; Permutation43$V26[which(Permutation43$V26>=1)]<-1; Permutation43 <- Permutation43[,c(1,26)]
+Permutation44$V26 <- (pchisq(Permutation44$V11, df=1, lower.tail = FALSE))*Permutation44$V18; Permutation44$V26[which(Permutation44$V26>=1)]<-1; Permutation44 <- Permutation44[,c(1,26)]
+Permutation45$V26 <- (pchisq(Permutation45$V11, df=1, lower.tail = FALSE))*Permutation45$V18; Permutation45$V26[which(Permutation45$V26>=1)]<-1; Permutation45 <- Permutation45[,c(1,26)]
+Permutation46$V26 <- (pchisq(Permutation46$V11, df=1, lower.tail = FALSE))*Permutation46$V18; Permutation46$V26[which(Permutation46$V26>=1)]<-1; Permutation46 <- Permutation46[,c(1,26)]
+Permutation47$V26 <- (pchisq(Permutation47$V11, df=1, lower.tail = FALSE))*Permutation47$V18; Permutation47$V26[which(Permutation47$V26>=1)]<-1; Permutation47 <- Permutation47[,c(1,26)]
+Permutation48$V26 <- (pchisq(Permutation48$V11, df=1, lower.tail = FALSE))*Permutation48$V18; Permutation48$V26[which(Permutation48$V26>=1)]<-1; Permutation48 <- Permutation48[,c(1,26)]
+Permutation49$V26 <- (pchisq(Permutation49$V11, df=1, lower.tail = FALSE))*Permutation49$V18; Permutation49$V26[which(Permutation49$V26>=1)]<-1; Permutation49 <- Permutation49[,c(1,26)]
+Permutation50$V26 <- (pchisq(Permutation50$V11, df=1, lower.tail = FALSE))*Permutation50$V18; Permutation50$V26[which(Permutation50$V26>=1)]<-1; Permutation50 <- Permutation50[,c(1,26)]
+# Joining the data frames
+Permutation_All <- join_all(list(Permutation1, Permutation2, Permutation3, Permutation4, Permutation5, Permutation6, Permutation7, Permutation8, Permutation9, Permutation10, Permutation11, Permutation12, Permutation13, Permutation14, Permutation15, Permutation16, Permutation17, Permutation18, Permutation19, Permutation20, Permutation21, Permutation22, Permutation23, Permutation24, Permutation25, Permutation26, Permutation27, Permutation28, Permutation29, Permutation30, Permutation31, Permutation32, Permutation33, Permutation34, Permutation35, Permutation36, Permutation37, Permutation38, Permutation39, Permutation40, Permutation41, Permutation42, Permutation43, Permutation44, Permutation45, Permutation46, Permutation47, Permutation48, Permutation49, Permutation50), by="V1")
+
+Rasqual_WithCov_Default_Permutations <- merge(Rasqual_WithCov_Default, Permutation_All, by.x="FeatureID", by.y="V1", all.x=TRUE)
+
+rm(Permutation1, Permutation2, Permutation3, Permutation4, Permutation5, Permutation6, Permutation7, Permutation8, Permutation9, Permutation10, Permutation11, Permutation12, Permutation13, Permutation14, Permutation15, Permutation16, Permutation17, Permutation18, Permutation19, Permutation20, Permutation21, Permutation22, Permutation23, Permutation24, Permutation25, Permutation26, Permutation27, Permutation28, Permutation29, Permutation30, Permutation31, Permutation32, Permutation33, Permutation34, Permutation35, Permutation36, Permutation37, Permutation38, Permutation39, Permutation40, Permutation41, Permutation42, Permutation43, Permutation44, Permutation45, Permutation46, Permutation47, Permutation48, Permutation49, Permutation50)
+
+# Obtaining FDR Threshold
+source("../getFDR_Matrix.R")
+Cutoff_Value <- getFDR_Matrix(Rasqual_WithCov_Default_Permutations$AdjustedPVal_1, Rasqual_WithCov_Default_Permutations[,c(29:78)], 0.1)
+# Cutoff_Value <- 0.02276441
+
+# Batch effect associated caQTLs
+BatchEffectAssociated_FeatureIDs <- read.table("../Compare_eQTLs_caQTLs/BatchEffectAssociated_FeatureIDs.txt", header=FALSE)
+Rasqual_WithCov_Default$PValue[which(Rasqual_WithCov_Default$FeatureID %in% BatchEffectAssociated_FeatureIDs$V1)] <- 1
+Rasqual_WithCov_Default$AdjustedPVal_1[which(Rasqual_WithCov_Default$FeatureID %in% BatchEffectAssociated_FeatureIDs$V1)] <- 1
+
+# QQPlot 
+set.seed(4732874)
+source("../ggd.qqplot.R")
+ggd.qqplot(Rasqual_WithCov_Default$PValue)
+
+# Manhattan Plot 
+ManhattanPlotTable <- Rasqual_WithCov_Default[,c("rsID", "Chromosome", "SNP_Position", "AdjustedPVal_1")]
+colnames(ManhattanPlotTable) <- c("SNP", "CHR", "BP", "P")
+manhattan(ManhattanPlotTable, suggestiveline=FALSE, genomewideline=1.642744, col = c("gray60", "Blue"), highlight=ManhattanPlotTable$SNP[which(ManhattanPlotTable$P<Cutoff_Value)])
+```
+
+
+
+Distance to Nearest TSS (Figure S2C)
+```{r}
+setwd(WorkingDirectory)
+library(AnnotationDbi); library(org.Hs.eg.db); library(ChIPpeakAnno)
+X <- read.table(textConnection(gsub(":", "-", as.character(Rasqual_WithCov_Default$FeatureID))), sep="-") # Peak Coordinates
+Rasqual_WithCov_Default <- cbind(Rasqual_WithCov_Default, X[,c(2,3)])
+colnames(Rasqual_WithCov_Default) <- c(ColumnNames, "PValue", "AdjustedPVal_1", "AdjustedPVal_2", "Peak_Start", "Peak_End")
+# Converting SNPs to GRanges object
+caQTLs <- Rasqual_WithCov_Default
+caQTLs_GR <- GRanges(seqnames=paste("chr",caQTLs$Chromosome,sep=""), ranges=IRanges(start=caQTLs$Peak_Start,end=(caQTLs$Peak_End)))
+# Expressed genes
+genes<-read.table("./Homo_sapiens_final_chr_added.GRCh37.70_ERCC92_Genes.txt", header=FALSE, row.names=1)
+genes$SYMBOL <- mapIds(org.Hs.eg.db,keys=as.character(genes[,5]),column='ALIAS',keytype="ENSEMBL",multiVals="first")
+Islet2 <- read.table("./Islets.genes.results/Islet2.genes.results",header=TRUE)
+rownames(Islet2)<-Islet2$gene_id
+Islet2<-merge(Islet2,genes,by=0)
+Islet2 <- Islet2[,c("V2", "V3", "V4", "V5", "V6", "SYMBOL", "FPKM")]
+Islet2_GR <- GRanges(seqnames=Islet2$V2, ranges=IRanges(start=Islet2$V3, end=Islet2$V4), strand=Islet2$V5)
+Islet2_TSS_GR <- resize(Islet2_GR, width=1, fix='start')
+# Nearest Expressed Genes
+Annotated_caQTLs <- as.data.frame(annotatePeakInBatch(caQTLs_GR, AnnotationData=Islet2_TSS_GR, featureType=c("TSS"), output=c("nearestLocation"), select="first"))
+Annotated_caQTLs$FeatureID <- paste(paste(substring(Annotated_caQTLs$seqnames,4), Annotated_caQTLs$start, sep=":"), Annotated_caQTLs$end, sep="-")
+Annotated_caQTLs <- Annotated_caQTLs[,c("FeatureID", "feature", "distancetoFeature")]
+Rasqual_WithCov_Default <- merge(Rasqual_WithCov_Default, Annotated_caQTLs, by="FeatureID", all.x=TRUE)
+# Re-ordering rows
+Rasqual_WithCov_Default <- Rasqual_WithCov_Default[order(Rasqual_WithCov_Default$AdjustedPVal_1, decreasing=FALSE),]
+# Plotting Histogram of Distance-to-nearest-TSS
+hist(Rasqual_WithCov_Default$distancetoFeature[which(Rasqual_WithCov_Default$AdjustedPVal_1<Cutoff_Value)], breaks=1000, xlab="Distance to Nearest TSS", ylab="Number of caQTLs", main="Distance to Nearest TSS")
+# Plotting P-Value versus Distance-to-nearest-TSS for Significant caQTLs
+temp <- Rasqual_WithCov_Default[which(Rasqual_WithCov_Default$AdjustedPVal_1<Cutoff_Value),]
+plot(temp$distancetoFeature, -log10(temp$PValue), pch=19,cex=1, xlab="Distance to Nearest TSS", ylab="PValue of caQTLs", col=rgb(red=0,green=0,blue=0, alpha=0.3))
+plot(temp$distancetoFeature, -log10(temp$PValue), pch=19,cex=1, xlab="Distance to Nearest TSS", ylab="PValue of caQTLs", col=rgb(red=0,green=0,blue=0, alpha=0.3))
+temp <- temp[which(-log10(temp$PValue)>12 | abs(temp$distancetoFeature)>3*10^5),]
+text(temp$distancetoFeature, -log10(temp$PValue), labels=Islet2$SYMBOL[as.numeric(temp$feature)], cex= 0.7, pos=4, offset=0.5)
+rm(temp)
+```
+
+
+
+
+
+caQTLs and Stretch Enhancers 
+```{r}
+setwd(WorkingDirectory)
+caQTLs_StretchEnhancers <- Rasqual_WithCov_Default
+caQTLs_StretchEnhancers_GR <- GRanges(seqnames=paste("chr",caQTLs_StretchEnhancers$Chromosome,sep=""), ranges=IRanges(start=caQTLs_StretchEnhancers$Peak_Start,end=(caQTLs_StretchEnhancers$Peak_End)))
+ColumnNames_temp <- colnames(caQTLs_StretchEnhancers)
+caQTLs <- Rasqual_WithCov_Default[which(Rasqual_WithCov_Default$AdjustedPVal_1<Cutoff_Value),]
+caQTLs_GR <- GRanges(seqnames=paste("chr",caQTLs$Chromosome,sep=""), ranges=IRanges(start=caQTLs$Peak_Start,end=(caQTLs$Peak_End)))
+# Annotating Peaks 
+Tissues <- read.table("./ReferenceFiles/SteveParker/TissuesStretchEnhancers.txt")
+ColumnNames <- colnames(caQTLs_StretchEnhancers)
+SEs_Overlap_NonOverlap <- data.frame()
+SEs_Overlap_NonOverlap_ROWNAMES <- vector()
+for(i in 1:length(Tissues$V1))
+{
+  readFile <- paste("./ReferenceFiles/SteveParker/StretchEnhancers/", Tissues$V1[i], sep="")
+  Tissue_StretchEnhancers <- read.table(readFile, header=FALSE)
+  Tissue_StretchEnhancers_GR <- GRanges(seqnames=Tissue_StretchEnhancers$V1, ranges=IRanges(start=Tissue_StretchEnhancers$V2, end=Tissue_StretchEnhancers$V3))
+  Overlaps <- findOverlaps(caQTLs_StretchEnhancers_GR, Tissue_StretchEnhancers_GR, select="first")
+  caQTLs_StretchEnhancers[,ncol(caQTLs_StretchEnhancers)+1] <- (!is.na(Overlaps))*1
+  ColumnNames <- c(ColumnNames, gsub("\\..*","",Tissues$V1[i]))
+  colnames(caQTLs_StretchEnhancers) <- ColumnNames
+  
+  Overlaps <- findOverlaps(Tissue_StretchEnhancers_GR, caQTLs_GR, select="first")
+  Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)+1] <- (!is.na(Overlaps))*1
+  SEs_Overlap_NonOverlap[i,1] <- sum(Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)])
+  SEs_Overlap_NonOverlap[i,2] <- nrow(Tissue_StretchEnhancers) - sum(Tissue_StretchEnhancers[,ncol(Tissue_StretchEnhancers)])
+  SEs_Overlap_NonOverlap_ROWNAMES[i] <-  gsub("\\..*","",Tissues$V1[i])
+}
+rownames(SEs_Overlap_NonOverlap) <- SEs_Overlap_NonOverlap_ROWNAMES
+colnames(SEs_Overlap_NonOverlap) <- c("Overlap", "NonOverlap")
+SEs_Overlap_NonOverlap$Ratio <- SEs_Overlap_NonOverlap$Overlap/(SEs_Overlap_NonOverlap$Overlap+SEs_Overlap_NonOverlap$NonOverlap)
+SEs_Overlap_NonOverlap <- SEs_Overlap_NonOverlap[order(SEs_Overlap_NonOverlap$Ratio, decreasing=TRUE),]
+par(mai=c(2,1,1,1))
+barplot(SEs_Overlap_NonOverlap$Ratio, las=2, ylab="Fraction Tissue SEs Overlapping caQTLs", main="Stretch Enhancers", col="black", names.arg=rownames(SEs_Overlap_NonOverlap))
+```
+
+
+
+
+caQTLs and ChromHMM 
+```{r}
+setwd(WorkingDirectory)
+caQTLs_ChromHMM <- Rasqual_WithCov_Default
+caQTLs_GR <- GRanges(seqnames=paste("chr",caQTLs_ChromHMM$Chromosome,sep=""), ranges=IRanges(start=caQTLs_ChromHMM$Peak_Start,end=(caQTLs_ChromHMM$Peak_End)))
+Tissues <- read.table("./ReferenceFiles/SteveParker/TissuesChromHMMstates.txt")
+ColumnNames <- colnames(caQTLs_ChromHMM)
+for(i in 1:length(Tissues$V1))
+{
+  readFile <- paste("./ReferenceFiles/SteveParker/ChromHMM/", Tissues$V1[i], sep="")
+  Tissue_ChromHMM_State <- read.table(readFile, header=FALSE)
+  Tissue_ChromHMM_State_GR <- GRanges(seqnames=Tissue_ChromHMM_State$V1, ranges=IRanges(start=Tissue_ChromHMM_State$V2, end=Tissue_ChromHMM_State$V3))
+  Overlaps <- findOverlaps(caQTLs_GR, Tissue_ChromHMM_State_GR, select="first")
+  caQTLs_ChromHMM[,ncol(caQTLs_ChromHMM)+1] <- Tissue_ChromHMM_State$V4[Overlaps]
+  ColumnNames <- c(ColumnNames, gsub("\\..*","",Tissues$V1[i]))
+  colnames(caQTLs_ChromHMM) <- ColumnNames
+}
+caQTLs_ChromHMM_Sig <- caQTLs_ChromHMM[which(caQTLs_ChromHMM$AdjustedPVal_1<Cutoff_Value), gsub("\\..*","",Tissues$V1)]
+caQTLs_ChromHMM_Sig_Counts <- data.frame()
+ChromHMM_States <- c("1_Active_TSS", "14_Bivalent/poised_TSS", "2_Weak_TSS", "3_Flanking_TSS", "9_Active_enhancer_1", "10_Active_enhancer_2", "11_Weak_enhancer", "8_Genic_enhancer",  "5_Strong_transcription", "6_Weak_transcription", "16_Repressed_polycomb", "17_Weak_repressed_polycomb", "18_Quiescent/low_signal")
+for(j in 1:ncol(caQTLs_ChromHMM_Sig))
+{
+  for(k in 1:length(ChromHMM_States))
+  {
+    caQTLs_ChromHMM_Sig_Counts[k,j] <- sum((caQTLs_ChromHMM_Sig[,j] %in% ChromHMM_States[k])*1)
+  }
+}
+rownames(caQTLs_ChromHMM_Sig_Counts) <- ChromHMM_States
+colnames(caQTLs_ChromHMM_Sig_Counts) <- colnames(caQTLs_ChromHMM_Sig)
+temp <- matrix(nrow=nrow(caQTLs_ChromHMM_Sig_Counts), ncol=ncol(caQTLs_ChromHMM_Sig_Counts))
+caQTLs_ChromHMM_Sig_Counts <- caQTLs_ChromHMM_Sig_Counts/colSums(caQTLs_ChromHMM_Sig_Counts)
+# Formatting data for ggplot
+Fractions <- NULL
+for(j in 1:ncol(caQTLs_ChromHMM_Sig_Counts)) { Fractions <- c(Fractions, caQTLs_ChromHMM_Sig_Counts[,j]) }
+Categories <- rep(colnames(caQTLs_ChromHMM_Sig_Counts), each=length(ChromHMM_States))
+ChromHMM_States_Rep <- rep(ChromHMM_States, times=length(Tissues$V1))
+prop <- data.frame(Categories, Fractions, ChromHMM_States_Rep, order=rep(length(ChromHMM_States):1,times=length(Tissues$V1)))
+# Reordering data Frame
+temp <- prop[which(as.character(prop[,3]) %in% as.character("18_Quiescent/low_signal")),]
+temp <- temp[order(temp[,2], decreasing=FALSE),1]
+StartingIndices <- match(temp, prop[,1])
+FullIndices <- vector()
+for(i in 1:length(StartingIndices)) { FullIndices <- c(FullIndices, StartingIndices[i]:(StartingIndices[i]+12)) }
+prop <- prop[FullIndices,]
+# ggplot
+prop$Categories <- factor(prop$Categories, levels=unique(prop$Categories))
+g <- ggplot(prop, aes(x=Categories, y=Fractions,fill=reorder(ChromHMM_States_Rep,order))) + geom_bar(position="fill", stat="identity") + scale_fill_manual(values=c("1_Active_TSS"="#FF0000","14_Bivalent/poised_TSS"="#CF0BC6","2_Weak_TSS"="#FF6969","9_Active_enhancer_1"="#FACA00","10_Active_enhancer_2"="#FACA00", "11_Weak_enhancer"="#FFFC04", "8_Genic_enhancer"="#FFFC04", "3_Flanking_TSS"="#FF4500", "5_Strong_transcription"="#00B050", "6_Weak_transcription"="#00B050", "16_Repressed_polycomb"="#7F7F7F", "17_Weak_repressed_polycomb"="#7F7F7F", "18_Quiescent/low_signal"="#FFFFFF")) + theme(axis.text.x=element_text(angle=90, hjust=1))
+print(g)
+```
+
+
+
+
+
+caQTLs and Individual-Specific Peaks 
+```{r}
+setwd(WorkingDirectory)
+caQTLs <- Rasqual_WithCov_Default[which(Rasqual_WithCov_Default$AdjustedPVal_1<Cutoff_Value),]
+caQTLs_GR <- GRanges(seqnames=paste("chr",caQTLs$Chromosome,sep=""), ranges=IRanges(start=caQTLs$Peak_Start,end=caQTLs$Peak_End), strand=NULL)
+ConsensusPeaks <- read.table("./DiffBind_19Islets_ConsensusPeaks.txt", header=TRUE) # Reading DiffBind Consensus Peaks
+ConsensusPeaks_GR <- GRanges(seqnames=ConsensusPeaks$seqnames,ranges=IRanges(start=ConsensusPeaks$start,end=ConsensusPeaks$end),strand=NULL,seq_info=ConsensusPeaks[,c(6:ncol(ConsensusPeaks))]) # Create GRanges object for the consensus peaks
+Overlaps <- findOverlaps(ConsensusPeaks_GR, caQTLs_GR, select="first")
+Overlaps_df <- cbind(1:length(Overlaps), Overlaps)
+Overlaps_df <- Overlaps_df[complete.cases(Overlaps_df),]
+ConsensusPeaks_caQTLs <- ConsensusPeaks[Overlaps_df[,1],]
+ConsensusPeaks <- ConsensusPeaks_caQTLs
+ConsensusPeaks_GR <- GRanges(seqnames=ConsensusPeaks$seqnames,ranges=IRanges(start=ConsensusPeaks$start,end=ConsensusPeaks$end),strand=NULL,seq_info=ConsensusPeaks[,c(6:ncol(ConsensusPeaks))])
+# Histogram of Sample Frrequency in ATAC-seq Peaks
+count=table(ConsensusPeaks$Called1+ConsensusPeaks$Called2)
+barplot(count,border="blue", col="red", xlab="Number of Islet Samples",ylab="Frequency of ATAC-seq Peaks",main=" caQTLs")
+# ChromHMM States Annotation of Consensus peaks segregated by Sample Frequency ()
+ConsensusPeaks$NumIslets <- ConsensusPeaks$Called1+ConsensusPeaks$Called2
+Islet_ChromHMM <- read.table("./ReferenceFiles/SteveParker/ChromHMM/Islets.chromatinStates.bed", header=FALSE)
+ConsensusPeaks$ChromHMM <- "18_Quiescent/low_signal"
+ConsensusPeaks$ChromHMM_Numbered <- 1
+ChromHMM_States <- c("18_Quiescent/low_signal", "17_Weak_repressed_polycomb", "16_Repressed_polycomb", "6_Weak_transcription", "5_Strong_transcription", "11_Weak_enhancer", "8_Genic_enhancer", "10_Active_enhancer_2", "9_Active_enhancer_1", "14_Bivalent/poised_TSS", "3_Flanking_TSS", "2_Weak_TSS", "1_Active_TSS")
+count <- 0
+for(i in ChromHMM_States)
+{
+  count <- count+1
+  Islet_ChromHMM_Subset <- Islet_ChromHMM[which(Islet_ChromHMM$V4 %in% i),]
+  Islet_ChromHMM_Subset_GR <- GRanges(seqnames=Islet_ChromHMM_Subset$V1,ranges=IRanges(start=Islet_ChromHMM_Subset$V2,end=Islet_ChromHMM_Subset$V3), strand=NULL)
+  Overlaps <- findOverlaps(ConsensusPeaks_GR, Islet_ChromHMM_Subset_GR, select="first")
+  Overlaps_df <- as.data.frame(cbind(1:length(Overlaps), Overlaps))
+  Overlaps_df <- Overlaps_df[complete.cases(Overlaps_df),]
+  ConsensusPeaks$ChromHMM[Overlaps_df[,1]] <- i
+  ConsensusPeaks$ChromHMM_Numbered[Overlaps_df[,1]] <- length(ChromHMM_States)-count+1
+}
+ChromHMM_Distribution <- as.data.frame(table(ConsensusPeaks$NumIslets, ConsensusPeaks$ChromHMM_Numbered))
+ChromHMM_Distribution <- ChromHMM_Distribution[order(ChromHMM_Distribution[,1], decreasing=FALSE),]
+colnames(ChromHMM_Distribution) <- c("NumIslets", "ChromHHM_Numbered", "Freq")
+ChromHMM_Distribution$Fraction <- 0
+for(i in 1:length(unique(ChromHMM_Distribution$NumIslets)))
+{
+  ChromHMM_Distribution$Fraction[which(ChromHMM_Distribution$NumIslets == i)] <- ChromHMM_Distribution$Freq[which(ChromHMM_Distribution$NumIslets == i)]/sum(ChromHMM_Distribution$Freq[which(ChromHMM_Distribution$NumIslets == i)])
+}
+count <- 0
+ChromHMM_Distribution$ChromHHM_States <- "18_Quiescent/low_signal"
+for(i in ChromHMM_States)
+{
+  count <- count+1
+  ChromHMM_Distribution$ChromHHM_States[which(ChromHMM_Distribution$ChromHHM_Numbered == length(ChromHMM_States)-count+1)] <- i
+}
+# ggplot
+ChromHMM_Distribution$order <- length(ChromHMM_States) - as.numeric(ChromHMM_Distribution$ChromHHM_Numbered) + 1
+g <- ggplot(ChromHMM_Distribution, aes(x=NumIslets, y=Fraction,fill=reorder(ChromHHM_States,order))) + geom_bar(position="fill", stat="identity") + scale_fill_manual(values=c("1_Active_TSS"="#FF0000","14_Bivalent/poised_TSS"="#CF0BC6","2_Weak_TSS"="#FF6969","9_Active_enhancer_1"="#FACA00","10_Active_enhancer_2"="#FACA00", "11_Weak_enhancer"="#FFFC04", "8_Genic_enhancer"="#FFFC04", "3_Flanking_TSS"="#FF4500", "5_Strong_transcription"="#00B050", "6_Weak_transcription"="#00B050", "16_Repressed_polycomb"="#7F7F7F", "17_Weak_repressed_polycomb"="#7F7F7F", "18_Quiescent/low_signal"="#FFFFFF")) + theme(axis.text.x=element_text(angle=90, hjust=1)) + ggtitle("caQTLs; ChromHMM")
+print(g)
+```
+
+
+
+
+MAF and caQTLs
+```{r}
+setwd(WorkingDirectory)
+caQTLs <- Rasqual_WithCov_Default[which(Rasqual_WithCov_Default$AdjustedPVal_1<Cutoff_Value),]
+caQTLs_GR <- GRanges(seqnames=paste("chr",caQTLs$Chromosome,sep=""), ranges=IRanges(start=caQTLs$Peak_Start,end=caQTLs$Peak_End), strand=NULL)
+ConsensusPeaks <- read.table("./DiffBind_19Islets_ConsensusPeaks.txt", header=TRUE) # Reading DiffBind Consensus Peaks
+ConsensusPeaks_GR <- GRanges(seqnames=ConsensusPeaks$seqnames,ranges=IRanges(start=ConsensusPeaks$start,end=ConsensusPeaks$end),strand=NULL,seq_info=ConsensusPeaks[,c(6:ncol(ConsensusPeaks))]) # Create GRanges object for the consensus peaks
+Overlaps <- findOverlaps(ConsensusPeaks_GR, caQTLs_GR, select="first")
+Overlaps_df <- cbind(1:length(Overlaps), Overlaps)
+Overlaps_df <- Overlaps_df[complete.cases(Overlaps_df),]
+ConsensusPeaks_caQTLs <- cbind(ConsensusPeaks[Overlaps_df[,1],], caQTLs[Overlaps_df[,2],])
+ConsensusPeaks_caQTLs$FreqPeakCohort <- ConsensusPeaks_caQTLs$Called1+ConsensusPeaks_caQTLs$Called2
+for(i in 1:nrow(ConsensusPeaks_caQTLs))
+{
+  if(ConsensusPeaks_caQTLs$AlelleFreq[i]<=0.5) { ConsensusPeaks_caQTLs$MinAlleleFreq[i] <- ConsensusPeaks_caQTLs$AlelleFreq[i] }
+  if(ConsensusPeaks_caQTLs$AlelleFreq[i]>0.5) { ConsensusPeaks_caQTLs$MinAlleleFreq[i] <- 1 - ConsensusPeaks_caQTLs$AlelleFreq[i] }
+}
+boxplot(MinAlleleFreq~FreqPeakCohort, data=ConsensusPeaks_caQTLs, outline=FALSE, notch=TRUE, ylab="Allele Frequency of minor allele", col=rainbow(19))
+ConsensusPeaks_caQTLs$log10PValue <- -log10(ConsensusPeaks_caQTLs$PValue)
+ConsensusPeaks_caQTLs$log10AdjustedPVal_1 <- -log10(ConsensusPeaks_caQTLs$AdjustedPVal_1)
+boxplot(log10PValue~FreqPeakCohort, data=ConsensusPeaks_caQTLs, outline=FALSE, notch=TRUE, ylab="-log10 (PValue)", col=rainbow(19))
+boxplot(Num_testedSNPs~FreqPeakCohort, data=ConsensusPeaks_caQTLs, outline=FALSE, notch=FALSE, ylab="Number of tested SNPs", col=rainbow(19))
+boxplot(log10AdjustedPVal_1~FreqPeakCohort, data=ConsensusPeaks_caQTLs, outline=FALSE, notch=TRUE, ylab="log10(AdjustedPVal_1)", col=rainbow(19))
+```
+
+
+
+
+
+Plot GREGOR Enrichment Results 
+```{r}
+setwd(WorkingDirectory)
+# rm(list=ls())
+library(pheatmap); library(matrixStats)
+DiseaseNames <- read.table("./GREGOR/DiseaseNames.txt", header=FALSE)
+TissueNames <- c("DifferentialPeaks", "SkeletalMuscle_S1S2", "Non-DifferentialPeaks_PosFC", "HY108_PBMC", "ConsensusPeaks_Filtered", "CD4T", "DifferentialPeaks_PosFC", "ConsensusPeaks", "HY103_PBMC", "SkeletalMuscle_S1", "Adipose", "caQTLs", "DiffBind_ConsensusPeaks", "SkeletalMuscle_S2", "DifferentialPeaks_NegFC", "Non-DifferentialPeaks_NegFC", "GM12878", "Non-DifferentialPeaks")
+PValues_df <- matrix(nrow=nrow(DiseaseNames), ncol=length(TissueNames))
+Enrichment <- matrix(nrow=nrow(DiseaseNames), ncol=length(TissueNames))
+for(i in 1:length(DiseaseNames$V1))
+{
+  StatisticsFile <- read.table(paste("./GREGOR/Results_OnlyStatsFile/", DiseaseNames$V1[i],"StatisticSummaryFile.txt",sep="/"), header=TRUE)
+  Enrichment[i,] <- log2(StatisticsFile$InBed_Index_SNP/StatisticsFile$ExpectNum_of_InBed_SNP)
+  PValues_df[i,] <- -log10(StatisticsFile$PValue)
+}
+rownames(PValues_df) <- substring(DiseaseNames$V1, 26)
+colnames(PValues_df) <- TissueNames
+rownames(Enrichment) <- substring(DiseaseNames$V1, 26)
+colnames(Enrichment) <- TissueNames
+caQTLs <- cbind(Enrichment[,"caQTLs"], PValues_df[,"caQTLs"])
+colnames(caQTLs) <- c("Enrichment", "-log10(pvalue)")
+caQTLs <- as.data.frame(caQTLs[complete.cases(caQTLs),])
+caQTLs <- caQTLs[order(caQTLs$`-log10(pvalue)`, decreasing=TRUE),]
+plot(caQTLs$Enrichment, caQTLs$`-log10(pvalue)`, 
+     main= "GREGOR Enrichment of caQTLs",
+     xlab= "log(GWAS Enrichment)",
+     ylab= "log10(pvalue)",
+     col= "blue", pch = 19, cex = 1, lty = "solid", lwd = 2)
+NumDiseasesTested <- nrow(caQTLs)
+pvalue_cutoff <- 0.1/NumDiseasesTested
+caQTLs <- caQTLs[which(caQTLs$`-log10(pvalue)` > -log10(pvalue_cutoff)),]
+text(caQTLs$Enrichment, caQTLs$`-log10(pvalue)`, labels=rownames(caQTLs), cex= 0.7, pos=3)
+abline(h = -log10(pvalue_cutoff), col="red", lty=2)
+```
+
+
+
+Comparing conservation scores
+```{r}
+setwd(WorkingDirectory)
+caQTLs_Conservation <- read.table("./caQTLs/ConservationScores/WithoutWindows_StatisticallySignificant_caQTLs_Positions_conservation.bed", header=FALSE)
+colnames(caQTLs_Conservation) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+caQTLs_Conservation_IsletGeneric <- read.table("./caQTLs/ConservationScores/WithoutWindows_StatisticallySignificant_caQTLs_Positions_conservation_IsletGenericPeaks.bed", header=FALSE)
+colnames(caQTLs_Conservation_IsletGeneric) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+caQTLs_Conservation_IsletSpecific <- read.table("./caQTLs/ConservationScores/WithoutWindows_StatisticallySignificant_caQTLs_Positions_conservation_IsletSpecificPeaks.bed", header=FALSE)
+colnames(caQTLs_Conservation_IsletSpecific) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+
+AllPeaks_Conservation <- read.table("./caQTLs/ConservationScores/ConsensusPeaks_conservation.bed", header=FALSE)
+colnames(AllPeaks_Conservation) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+AllPeaks_Conservation_IsletGeneric <- read.table("./caQTLs/ConservationScores/ConsensusPeaks_conservation_IsletGenericPeaks.bed", header=FALSE)
+colnames(AllPeaks_Conservation_IsletGeneric) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+AllPeaks_Conservation_IsletSpecific <- read.table("./caQTLs/ConservationScores/ConsensusPeaks_conservation_IsletSpecificPeaks.bed", header=FALSE)
+colnames(AllPeaks_Conservation_IsletSpecific) <- c("chr", "start", "end", "PeakName", "MaxConservationScore", "MeanConservationScore")
+
+boxplot(caQTLs_Conservation$MaxConservationScore, AllPeaks_Conservation$MaxConservationScore, names=c("caQTLs", "AllPeaks"), col=c("red", "blue"), main="Max Conservation Score")
+par(mar=c(10,4,4,2))
+boxplot(caQTLs_Conservation$MeanConservationScore, caQTLs_Conservation_IsletGeneric$MeanConservationScore, caQTLs_Conservation_IsletSpecific$MeanConservationScore,
+        AllPeaks_Conservation$MeanConservationScore, AllPeaks_Conservation_IsletGeneric$MeanConservationScore, AllPeaks_Conservation_IsletSpecific$MeanConservationScore,
+        names=c("caQTLs (All)", "caQTLs (Common)", "caQTLs (Specific)", "All Peaks", "All Peaks (Common)", "All Peaks (Specific)"), col=c("red", "red", "red", "blue", "blue", "blue"), notch=TRUE, main="Mean Conservation Score", las=2)
+
+```
+
+
+
+
+
+
+MAFs of caQTLs
+```{r}
+setwd(WorkingDirectory)
+caQTLs <- read.table("./caQTLs/WithoutWindows_StatisticallySignificant_caQTLs_SpacesRemoved.txt", header=TRUE)
+caQTLs_SNP_Annotations <- read.table("./caQTLs/caQTLs-rsids_UCSC_output.txt", header=FALSE)
+colnames(caQTLs_SNP_Annotations) <- c("chrom", "start", "end", "name", "refNCBI", "class", "valid", "avHet", "avHetSE", "func", "alleleFreqCount", "alleles", "alleleNs", "alleleFreqs")
+caQTLs <- merge(caQTLs, caQTLs_SNP_Annotations, by.x="Actual_rsids", by.y="name", all.x=TRUE)
+caQTLs <- caQTLs[,c("Actual_rsids", "PValue", "avHet")]
+caQTLs <- caQTLs[complete.cases(caQTLs),]
+hist(caQTLs[,"avHet"], breaks=20, xlab="Avergae Heterozygosity of caQTL lead SNPs", main="Histogram of avHet of caQTL SNPs", col="red")
+
+for(i in 1:nrow(caQTLs))
+{
+  if(caQTLs$avHet[i]>0.5) { caQTLs$Category[i] <- 6 }
+  if(caQTLs$avHet[i]>0.4 & caQTLs$avHet[i]<=0.5) { caQTLs$Category[i] <- 5 }
+  if(caQTLs$avHet[i]>0.3 & caQTLs$avHet[i]<=0.4) { caQTLs$Category[i] <- 4 }
+  if(caQTLs$avHet[i]>0.2 & caQTLs$avHet[i]<=0.3) { caQTLs$Category[i] <- 3 }
+  if(caQTLs$avHet[i]>0.1 & caQTLs$avHet[i]<=0.2) { caQTLs$Category[i] <- 2 }
+  if(caQTLs$avHet[i]>0 & caQTLs$avHet[i]<=0.1) { caQTLs$Category[i] <- 1 }
+}
+caQTLs <- caQTLs[which(caQTLs$Category!=6),]
+caQTLs$log10p.value <- -log10(caQTLs$PValue)
+scatter.smooth(caQTLs[,"avHet"], -log10(caQTLs[,"PValue"]), xlab="Avergae Heterozygosity of caQTL lead SNPs", col="red")
+boxplot(log10p.value~Category, data=caQTLs, outline=FALSE, notch=TRUE, names=c("0.0-0.10", "0.10-0.20", "0.20-0.30", "0.30-0.40", "0.40-0.50"), ylab="-log10(pvalues)", main="avHet vs pvalues")
+```
+
+
+
+
